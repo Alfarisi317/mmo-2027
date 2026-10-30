@@ -1,0 +1,6 @@
+{
+  "name": "MMO 2027 - Matriks Mathematics Olympiad",
+  "description": "Platform ujian resmi MMO 2027 (Matriks Mathematics Olympiad: Explore, Think, Excel) oleh HMPS Pendidikan Matematika UMM Bidang Keilmuan, dilengkapi pengawasan Proktor AI, sistem anti-cheat, dan manajemen soal.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

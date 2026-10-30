@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --mmo-dark: #646464;
+    --mmo-light: #D5D5D5;
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    color: #18181b;
+    background-color: #ffffff;
+  }
+  
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+/* Custom sleek scrollbar for minimalist neutral light gray theme */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f4f4f5;
+}
+::-webkit-scrollbar-thumb {
+  background: #D5D5D5;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #646464;
+}
+
+/* KaTeX custom sizing and math styling to fit clean light theme */
+.katex-display {
+  margin: 0.75em 0 !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 0;
+}
+
+.katex {
+  font-size: 1.1em;
+  color: #18181b;
+}
+
+/* Force KaTeX text and all internal elements to white when inside dark containers or .katex-white */
+.text-white .katex,
+.text-white .katex *,
+.katex-white,
+.katex-white .katex,
+.katex-white .katex * {
+  color: #ffffff !important;
+  fill: #ffffff !important;
+}
+
+/* Ensure math fraction lines and square roots are white on dark */
+.text-white .katex .frac-line,
+.katex-white .katex .frac-line,
+.text-white .katex .sqrt-line,
+.katex-white .katex .sqrt-line {
+  border-bottom-color: #ffffff !important;
+  border-color: #ffffff !important;
+}
+
+/* Prevent text selection when anti-cheat mode is active */
+.no-select {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* MMO Smooth Curved Decorative Borders */
+.mmo-card-curved {
+  border-radius: 1.5rem;
+  border: 1px solid #D5D5D5;
+  background-color: #ffffff;
+  box-shadow: 0 4px 20px -2px rgba(100, 100, 100, 0.08);
+}
+
+.mmo-pill-dark {
+  background-color: #646464;
+  color: #ffffff;
+  border-radius: 9999px;
+}
+
+.mmo-pill-light {
+  background-color: #D5D5D5;
+  color: #27272a;
+  border-radius: 9999px;
+}
