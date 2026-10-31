@@ -1,6 +1,6 @@
 {
-  "summary":  "Rencana implementasi standardisasi palet warna konsisten Iron Gate (#53585E) & Sky Blue (#83B9DF), animasi hover interaktif dengan soft glow & elevasi halus, serta revisi 3 Pilar Nalar Matematika (Explore, Think, Excel) yang terintegrasi di seluruh babak kompetisi termasuk Penyisihan.",
-  "updatedAt":  "2026-10-31T04:02:24.060543864Z",
+  "summary":  "Rencana implementasi penambahan tombol interaktif pemilih Jenjang (SMP/SMA) dan Babak (Penyisihan/Semifinal) di formulir login peserta, ruang tunggu, dan seluruh tab dasbor pengawas panitia.",
+  "updatedAt":  "2026-10-31T04:41:24.287816059Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

@@ -98,6 +98,10 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
   const [lastSyncText, setLastSyncText] = useState<string>('');
   const [isDemoActive, setIsDemoActive] = useState<boolean>(true);
 
+  // Segmented interactive selectors for Jenjang (SMP vs SMA) & Babak (Penyisihan vs Semifinal)
+  const [selectedCategory, setSelectedCategory] = useState<OlympiadCategory>('SMA');
+  const [selectedStage, setSelectedStage] = useState<CompetitionStage>('Penyisihan');
+
   useEffect(() => {
     // 1. Initial quick load from local storage
     setRegisteredList(getRegisteredParticipants());
@@ -269,7 +273,12 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
         return;
       }
 
-      const p = result.participant;
+      // Honor the explicitly chosen Jenjang and Babak selected by the participant via buttons
+      const p: RegisteredParticipant = {
+        ...result.participant,
+        category: selectedCategory,
+        stage: selectedStage,
+      };
 
       // If panitia has already opened the exam gate, start immediately
       if (result.isExamGateOpen) {
@@ -281,7 +290,7 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
             school: p.school,
             nisnOrRegNumber: p.nisnOrRegNumber,
             category: p.category,
-            stage: p.stage || 'Penyisihan',
+            stage: p.stage || selectedStage,
             city: p.city || 'Indonesia',
             email: p.email,
             supervisionMode: 'WEB_CAM',
@@ -303,6 +312,12 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
   const handleSelectDemoAccount = (account: RegisteredParticipant) => {
     setFullNameInput(account.fullName);
     setPasswordInput(account.password || account.nisnOrRegNumber);
+    if (account.category) {
+      setSelectedCategory(account.category);
+    }
+    if (account.stage) {
+      setSelectedStage(account.stage);
+    }
     setShowDemoModal(false);
     setValidationError(null);
   };
@@ -761,19 +776,60 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
 
               {/* Participant Profile Card */}
               <div className="bg-white border border-[#D5D5D5] rounded-3xl p-5 sm:p-6 shadow-xs space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-[#D5D5D5]">
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[#D5D5D5]">
                   <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">
                     Identitas Peserta Terverifikasi
                   </span>
-                  <span
-                    className={`text-xs font-bold px-2.5 py-1 rounded-xl border ${
-                      waitingParticipant.category === 'SMP'
-                        ? 'bg-blue-50 text-blue-700 border-blue-200'
-                        : 'bg-amber-50 text-amber-700 border-amber-200'
-                    }`}
-                  >
-                    Jenjang {waitingParticipant.category}
-                  </span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span
+                      className={`text-xs font-bold px-3 py-1 rounded-xl border ${
+                        waitingParticipant.category === 'SMP'
+                          ? 'bg-blue-50 text-blue-700 border-blue-200'
+                          : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                      }`}
+                    >
+                      Jenjang {waitingParticipant.category}
+                    </span>
+                    <span className="text-xs font-bold px-3 py-1 rounded-xl bg-[#83B9DF]/20 text-[#53585E] border border-[#83B9DF]/40">
+                      Babak {waitingParticipant.stage || selectedStage || 'Penyisihan'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Switcher Jenjang & Babak Langsung di Ruang Tunggu */}
+                <div className="p-3.5 bg-[#f7f7f8] border border-[#D5D5D5] rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <div>
+                    <span className="font-bold text-[#53585E] block">Paket Soal Ujian Terpilih:</span>
+                    <span className="text-zinc-600 text-[11px]">
+                      Akan mengerjakan soal <strong>Jenjang {waitingParticipant.category}</strong> — <strong>Babak {waitingParticipant.stage || 'Penyisihan'}</strong>.
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextCat = waitingParticipant.category === 'SMP' ? 'SMA' : 'SMP';
+                        setWaitingParticipant({ ...waitingParticipant, category: nextCat });
+                        setSelectedCategory(nextCat);
+                      }}
+                      className="px-3 py-1.5 bg-white hover:bg-[#83B9DF]/15 border border-[#D5D5D5] hover:border-[#83B9DF] rounded-xl text-xs font-bold text-[#53585E] transition-all duration-200 shadow-2xs hover:-translate-y-0.5 cursor-pointer"
+                      title="Klik untuk berpindah jenjang soal"
+                    >
+                      Ubah ke Jenjang {waitingParticipant.category === 'SMP' ? 'SMA' : 'SMP'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextStage = waitingParticipant.stage === 'Penyisihan' ? 'Semifinal' : 'Penyisihan';
+                        setWaitingParticipant({ ...waitingParticipant, stage: nextStage });
+                        setSelectedStage(nextStage);
+                      }}
+                      className="px-3 py-1.5 bg-white hover:bg-[#83B9DF]/15 border border-[#D5D5D5] hover:border-[#83B9DF] rounded-xl text-xs font-bold text-[#53585E] transition-all duration-200 shadow-2xs hover:-translate-y-0.5 cursor-pointer"
+                      title="Klik untuk berpindah babak ujian"
+                    >
+                      Ubah ke Babak {waitingParticipant.stage === 'Penyisihan' ? 'Semifinal' : 'Penyisihan'}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1048,6 +1104,168 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                 </div>
               ) : (
                 <form onSubmit={handleLoginAndStart} className="space-y-5 bg-white border border-[#D5D5D5] hover:border-[#83B9DF]/60 p-6 sm:p-7 rounded-3xl shadow-xs transition-all duration-300">
+                  {/* Pilihan Interaktif: Jenjang (SMP/SMA) & Babak (Penyisihan/Semifinal) */}
+                  <div className="space-y-4 p-4 sm:p-5 bg-[#f7f7f8] border border-[#D5D5D5] rounded-3xl shadow-2xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-[#D5D5D5]">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-[#83B9DF]" />
+                        <span className="text-xs font-extrabold text-[#53585E] uppercase tracking-wider">
+                          Pilih Paket Soal Ujian
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] font-bold text-[#53585E] bg-[#83B9DF]/20 px-2.5 py-0.5 rounded-lg border border-[#83B9DF]/40">
+                          {selectedCategory}
+                        </span>
+                        <span className="text-[11px] font-bold text-[#53585E] bg-[#83B9DF]/20 px-2.5 py-0.5 rounded-lg border border-[#83B9DF]/40">
+                          {selectedStage}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* 1. Tombol Pemilih Jenjang (SMP vs SMA) */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-bold text-zinc-800">
+                          1. Pilih Tingkat / Jenjang Sekolah:
+                        </label>
+                        <span className="text-[11px] text-zinc-500">Klik tombol di bawah</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedCategory('SMP')}
+                          className={`p-3 rounded-2xl border text-left transition-all duration-300 cursor-pointer flex items-center justify-between group ${
+                            selectedCategory === 'SMP'
+                              ? 'bg-[#53585E] text-white border-[#53585E] shadow-sm shadow-[#83B9DF]/30 ring-2 ring-[#83B9DF]/70 -translate-y-0.5'
+                              : 'bg-white text-zinc-700 border-[#D5D5D5] hover:border-[#83B9DF] hover:bg-zinc-50 hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(131,185,223,0.2)]'
+                          }`}
+                        >
+                          <div>
+                            <span className="text-xs sm:text-sm font-extrabold block">
+                              Jenjang SMP / MTs
+                            </span>
+                            <span className={`text-[11px] block mt-0.5 ${selectedCategory === 'SMP' ? 'text-zinc-200' : 'text-zinc-500'}`}>
+                              Sekolah Menengah Pertama
+                            </span>
+                          </div>
+                          <div className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                            selectedCategory === 'SMP'
+                              ? 'bg-[#83B9DF] text-[#53585E]'
+                              : 'bg-zinc-100 text-zinc-400 group-hover:text-[#53585E] group-hover:bg-[#83B9DF]/20'
+                          }`}>
+                            {selectedCategory === 'SMP' ? (
+                              <Check className="w-4 h-4 stroke-[3]" />
+                            ) : (
+                              <span className="text-[10px] font-bold">SMP</span>
+                            )}
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setSelectedCategory('SMA')}
+                          className={`p-3 rounded-2xl border text-left transition-all duration-300 cursor-pointer flex items-center justify-between group ${
+                            selectedCategory === 'SMA'
+                              ? 'bg-[#53585E] text-white border-[#53585E] shadow-sm shadow-[#83B9DF]/30 ring-2 ring-[#83B9DF]/70 -translate-y-0.5'
+                              : 'bg-white text-zinc-700 border-[#D5D5D5] hover:border-[#83B9DF] hover:bg-zinc-50 hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(131,185,223,0.2)]'
+                          }`}
+                        >
+                          <div>
+                            <span className="text-xs sm:text-sm font-extrabold block">
+                              Jenjang SMA / MA / SMK
+                            </span>
+                            <span className={`text-[11px] block mt-0.5 ${selectedCategory === 'SMA' ? 'text-zinc-200' : 'text-zinc-500'}`}>
+                              Sekolah Menengah Atas & Kejuruan
+                            </span>
+                          </div>
+                          <div className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                            selectedCategory === 'SMA'
+                              ? 'bg-[#83B9DF] text-[#53585E]'
+                              : 'bg-zinc-100 text-zinc-400 group-hover:text-[#53585E] group-hover:bg-[#83B9DF]/20'
+                          }`}>
+                            {selectedCategory === 'SMA' ? (
+                              <Check className="w-4 h-4 stroke-[3]" />
+                            ) : (
+                              <span className="text-[10px] font-bold">SMA</span>
+                            )}
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 2. Tombol Pemilih Babak (Penyisihan vs Semifinal) */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-bold text-zinc-800">
+                          2. Pilih Babak Kompetisi:
+                        </label>
+                        <span className="text-[11px] text-zinc-500">Klik tombol di bawah</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedStage('Penyisihan')}
+                          className={`p-3 rounded-2xl border text-left transition-all duration-300 cursor-pointer flex items-center justify-between group ${
+                            selectedStage === 'Penyisihan'
+                              ? 'bg-[#53585E] text-white border-[#53585E] shadow-sm shadow-[#83B9DF]/30 ring-2 ring-[#83B9DF]/70 -translate-y-0.5'
+                              : 'bg-white text-zinc-700 border-[#D5D5D5] hover:border-[#83B9DF] hover:bg-zinc-50 hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(131,185,223,0.2)]'
+                          }`}
+                        >
+                          <div>
+                            <span className="text-xs sm:text-sm font-extrabold block">
+                              Babak Penyisihan
+                            </span>
+                            <span className={`text-[11px] block mt-0.5 ${selectedStage === 'Penyisihan' ? 'text-zinc-200' : 'text-zinc-500'}`}>
+                              Tahap Seleksi & Eksplorasi Mandiri
+                            </span>
+                          </div>
+                          <div className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                            selectedStage === 'Penyisihan'
+                              ? 'bg-[#83B9DF] text-[#53585E]'
+                              : 'bg-zinc-100 text-zinc-400 group-hover:text-[#53585E] group-hover:bg-[#83B9DF]/20'
+                          }`}>
+                            {selectedStage === 'Penyisihan' ? (
+                              <Check className="w-4 h-4 stroke-[3]" />
+                            ) : (
+                              <span className="text-[10px] font-bold">1</span>
+                            )}
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setSelectedStage('Semifinal')}
+                          className={`p-3 rounded-2xl border text-left transition-all duration-300 cursor-pointer flex items-center justify-between group ${
+                            selectedStage === 'Semifinal'
+                              ? 'bg-[#53585E] text-white border-[#53585E] shadow-sm shadow-[#83B9DF]/30 ring-2 ring-[#83B9DF]/70 -translate-y-0.5'
+                              : 'bg-white text-zinc-700 border-[#D5D5D5] hover:border-[#83B9DF] hover:bg-zinc-50 hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(131,185,223,0.2)]'
+                          }`}
+                        >
+                          <div>
+                            <span className="text-xs sm:text-sm font-extrabold block">
+                              Babak Semifinal
+                            </span>
+                            <span className={`text-[11px] block mt-0.5 ${selectedStage === 'Semifinal' ? 'text-zinc-200' : 'text-zinc-500'}`}>
+                              Tahap Penalaran & HOTS Lanjut
+                            </span>
+                          </div>
+                          <div className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                            selectedStage === 'Semifinal'
+                              ? 'bg-[#83B9DF] text-[#53585E]'
+                              : 'bg-zinc-100 text-zinc-400 group-hover:text-[#53585E] group-hover:bg-[#83B9DF]/20'
+                          }`}>
+                            {selectedStage === 'Semifinal' ? (
+                              <Check className="w-4 h-4 stroke-[3]" />
+                            ) : (
+                              <span className="text-[10px] font-bold">2</span>
+                            )}
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Full Name Input */}
                   <div>
                     <label className="block text-xs font-bold text-zinc-800 mb-1.5">

@@ -111,6 +111,7 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
   const [pastedText, setPastedText] = useState<string>('');
   const [copiedCredentialId, setCopiedCredentialId] = useState<string | null>(null);
   const [regFilterCategory, setRegFilterCategory] = useState<'ALL' | 'SMP' | 'SMA'>('ALL');
+  const [regFilterStage, setRegFilterStage] = useState<'ALL' | CompetitionStage>('ALL');
   const [regSearchQuery, setRegSearchQuery] = useState<string>('');
   const [showAddManualModal, setShowAddManualModal] = useState<boolean>(false);
 
@@ -122,10 +123,12 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
   const [mNisn, setMNisn] = useState<string>('');
   const [mCity, setMCity] = useState<string>('');
   const [mCategory, setMCategory] = useState<OlympiadCategory>('SMA');
+  const [mStage, setMStage] = useState<CompetitionStage>('Penyisihan');
 
   // Rekap Nilai States
   const [inspectingScoresParticipant, setInspectingScoresParticipant] = useState<LiveParticipantMonitoring | null>(null);
   const [recapCategoryFilter, setRecapCategoryFilter] = useState<'ALL' | 'SMP' | 'SMA'>('ALL');
+  const [recapStageFilter, setRecapStageFilter] = useState<'ALL' | CompetitionStage>('ALL');
   const [recapSearchQuery, setRecapSearchQuery] = useState<string>('');
 
   // Participants list (synced with multi-device server & local storage)
@@ -329,6 +332,7 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
 
   // Filters & selection
   const [categoryFilter, setCategoryFilter] = useState<'ALL' | OlympiadCategory>('ALL');
+  const [stageFilter, setStageFilter] = useState<'ALL' | CompetitionStage>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'WARNING' | 'SUBMITTED' | 'DISQUALIFIED'>('ALL');
   const [supervisionFilter, setSupervisionFilter] = useState<'ALL' | 'WEB_CAM' | 'ZOOM_2_DEVICE'>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -389,6 +393,7 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
   const filteredParticipants = useMemo(() => {
     return participants.filter((p) => {
       const matchCat = categoryFilter === 'ALL' || p.category === categoryFilter;
+      const matchStage = stageFilter === 'ALL' || (p.stage || 'Penyisihan') === stageFilter;
       const matchStatus = statusFilter === 'ALL' || p.status === statusFilter;
       const isZoom = p.supervisionMode === 'ZOOM_2_DEVICE' || p.cameraStatus === 'ZOOM';
       const matchSupervision =
@@ -399,9 +404,9 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
         p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.school.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.id.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchCat && matchStatus && matchSupervision && matchSearch;
+      return matchCat && matchStage && matchStatus && matchSupervision && matchSearch;
     });
-  }, [participants, categoryFilter, statusFilter, supervisionFilter, searchQuery]);
+  }, [participants, categoryFilter, stageFilter, statusFilter, supervisionFilter, searchQuery]);
 
   // Send warning to participant
   const handleSendWarning = async (participantId: string) => {
@@ -788,7 +793,7 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
       nisnOrRegNumber: mNisn.trim() || `00${Math.floor(10000000 + Math.random() * 90000000)}`,
       city: mCity.trim() || 'Indonesia',
       category: mCategory,
-      stage: 'Penyisihan',
+      stage: mStage,
       registeredAt: new Date().toISOString(),
     };
 
@@ -814,6 +819,9 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
     if (recapCategoryFilter !== 'ALL') {
       list = list.filter((p) => p.category === recapCategoryFilter);
     }
+    if (recapStageFilter !== 'ALL') {
+      list = list.filter((p) => (p.stage || 'Penyisihan') === recapStageFilter);
+    }
     if (recapSearchQuery.trim()) {
       const q = recapSearchQuery.toLowerCase();
       list = list.filter(
@@ -827,7 +835,7 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
       const scoreB = b.score ?? -999;
       return scoreB - scoreA;
     });
-  }, [participants, recapCategoryFilter, recapSearchQuery]);
+  }, [participants, recapCategoryFilter, recapStageFilter, recapSearchQuery]);
 
   const submittedParticipants = useMemo(() => {
     return participants.filter((p) => p.status === 'SUBMITTED' || p.score !== undefined);
@@ -1306,18 +1314,37 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
                   />
                 </div>
 
-                <div className="flex items-center gap-2">
-                  {/* Category Filter */}
-                  <div className="flex items-center bg-[#f7f7f8] border border-[#D5D5D5] p-0.5 rounded-2xl text-xs">
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Category Filter (Jenjang SMP / SMA) */}
+                  <div className="flex items-center bg-white border border-[#D5D5D5] p-0.5 rounded-2xl text-xs shadow-2xs">
                     {(['ALL', 'SMP', 'SMA'] as const).map((cat) => (
                       <button
                         key={cat}
                         onClick={() => setCategoryFilter(cat)}
-                        className={`px-3 py-1 rounded-xl text-[11px] font-medium transition-colors cursor-pointer ${
-                          categoryFilter === cat ? 'bg-[#646464] text-white font-semibold shadow-xs' : 'text-zinc-600 hover:text-zinc-900'
+                        className={`px-3 py-1 rounded-xl text-[11px] font-semibold transition-all cursor-pointer ${
+                          categoryFilter === cat
+                            ? 'bg-[#53585E] text-white shadow-xs'
+                            : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
                         }`}
                       >
-                        {cat === 'ALL' ? 'Semua' : cat}
+                        {cat === 'ALL' ? 'Semua Jenjang' : cat}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Stage Filter (Babak Penyisihan / Semifinal) */}
+                  <div className="flex items-center bg-white border border-[#D5D5D5] p-0.5 rounded-2xl text-xs shadow-2xs">
+                    {(['ALL', 'Penyisihan', 'Semifinal'] as const).map((stg) => (
+                      <button
+                        key={stg}
+                        onClick={() => setStageFilter(stg)}
+                        className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold transition-all cursor-pointer ${
+                          stageFilter === stg
+                            ? 'bg-[#53585E] text-white shadow-xs'
+                            : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+                        }`}
+                      >
+                        {stg === 'ALL' ? 'Semua Babak' : stg}
                       </button>
                     ))}
                   </div>
@@ -1327,7 +1354,7 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
                     <button
                       onClick={() => setSupervisionFilter('ALL')}
                       className={`px-2.5 py-1 rounded-xl text-[11px] font-medium transition-colors cursor-pointer ${
-                        supervisionFilter === 'ALL' ? 'bg-[#646464] text-white font-semibold shadow-xs' : 'text-zinc-600 hover:text-zinc-900'
+                        supervisionFilter === 'ALL' ? 'bg-[#53585E] text-white font-semibold shadow-xs' : 'text-zinc-600 hover:text-zinc-900'
                       }`}
                       title="Semua metode pengawasan"
                     >
@@ -1482,9 +1509,18 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
                               </td>
 
                               <td className="py-3.5 px-3">
-                                <span className="font-mono font-medium text-zinc-700 bg-zinc-100 px-2 py-0.5 rounded-md">
-                                  {p.category}
-                                </span>
+                                <div className="flex flex-col gap-1 items-start">
+                                  <span className={`font-mono text-[11px] font-bold px-2 py-0.5 rounded-lg border ${
+                                    p.category === 'SMP'
+                                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                      : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                  }`}>
+                                    {p.category}
+                                  </span>
+                                  <span className="text-[10px] font-semibold text-[#53585E] bg-[#83B9DF]/20 px-1.5 py-0.5 rounded-md border border-[#83B9DF]/40">
+                                    {p.stage || 'Penyisihan'}
+                                  </span>
+                                </div>
                               </td>
 
                               <td className="py-3.5 px-3">
@@ -1981,38 +2017,75 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
 
           {/* Filter Bar & Search */}
           <div className="bg-[#fafafa] border border-[#D5D5D5] rounded-3xl p-4 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
-            {/* Category Filter */}
-            <div className="flex items-center gap-1.5 bg-white border border-[#D5D5D5] p-1 rounded-2xl text-xs">
-              <button
-                onClick={() => setRecapCategoryFilter('ALL')}
-                className={`px-3 py-1.5 rounded-xl font-medium transition-all cursor-pointer ${
-                  recapCategoryFilter === 'ALL'
-                    ? 'bg-[#646464] text-white font-bold shadow-xs'
-                    : 'text-zinc-600 hover:text-zinc-900'
-                }`}
-              >
-                Semua ({participants.length})
-              </button>
-              <button
-                onClick={() => setRecapCategoryFilter('SMP')}
-                className={`px-3 py-1.5 rounded-xl font-medium transition-all cursor-pointer ${
-                  recapCategoryFilter === 'SMP'
-                    ? 'bg-[#646464] text-white font-bold shadow-xs'
-                    : 'text-zinc-600 hover:text-zinc-900'
-                }`}
-              >
-                SMP ({participants.filter((p) => p.category === 'SMP').length})
-              </button>
-              <button
-                onClick={() => setRecapCategoryFilter('SMA')}
-                className={`px-3 py-1.5 rounded-xl font-medium transition-all cursor-pointer ${
-                  recapCategoryFilter === 'SMA'
-                    ? 'bg-[#646464] text-white font-bold shadow-xs'
-                    : 'text-zinc-600 hover:text-zinc-900'
-                }`}
-              >
-                SMA ({participants.filter((p) => p.category === 'SMA').length})
-              </button>
+            {/* Category & Stage Filters */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Category Filter (Jenjang) */}
+              <div className="flex items-center gap-1 bg-white border border-[#D5D5D5] p-1 rounded-2xl text-xs shadow-2xs">
+                <button
+                  onClick={() => setRecapCategoryFilter('ALL')}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+                    recapCategoryFilter === 'ALL'
+                      ? 'bg-[#53585E] text-white shadow-xs'
+                      : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+                  }`}
+                >
+                  Semua Jenjang ({participants.length})
+                </button>
+                <button
+                  onClick={() => setRecapCategoryFilter('SMP')}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+                    recapCategoryFilter === 'SMP'
+                      ? 'bg-[#53585E] text-white shadow-xs'
+                      : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+                  }`}
+                >
+                  SMP ({participants.filter((p) => p.category === 'SMP').length})
+                </button>
+                <button
+                  onClick={() => setRecapCategoryFilter('SMA')}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+                    recapCategoryFilter === 'SMA'
+                      ? 'bg-[#53585E] text-white shadow-xs'
+                      : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+                  }`}
+                >
+                  SMA ({participants.filter((p) => p.category === 'SMA').length})
+                </button>
+              </div>
+
+              {/* Stage Filter (Babak) */}
+              <div className="flex items-center gap-1 bg-white border border-[#D5D5D5] p-1 rounded-2xl text-xs shadow-2xs">
+                <button
+                  onClick={() => setRecapStageFilter('ALL')}
+                  className={`px-2.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+                    recapStageFilter === 'ALL'
+                      ? 'bg-[#53585E] text-white shadow-xs'
+                      : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+                  }`}
+                >
+                  Semua Babak ({participants.length})
+                </button>
+                <button
+                  onClick={() => setRecapStageFilter('Penyisihan')}
+                  className={`px-2.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+                    recapStageFilter === 'Penyisihan'
+                      ? 'bg-[#53585E] text-white shadow-xs'
+                      : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+                  }`}
+                >
+                  Penyisihan ({participants.filter((p) => (p.stage || 'Penyisihan') === 'Penyisihan').length})
+                </button>
+                <button
+                  onClick={() => setRecapStageFilter('Semifinal')}
+                  className={`px-2.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+                    recapStageFilter === 'Semifinal'
+                      ? 'bg-[#53585E] text-white shadow-xs'
+                      : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+                  }`}
+                >
+                  Semifinal ({participants.filter((p) => p.stage === 'Semifinal').length})
+                </button>
+              </div>
             </div>
 
             {/* Search Input */}
@@ -2493,40 +2566,80 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
 
           {/* Filter Bar & Search */}
           <div className="bg-[#fafafa] border border-[#D5D5D5] rounded-3xl p-4 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <div className="flex items-center gap-1.5 bg-white border border-[#D5D5D5] p-1 rounded-2xl text-xs">
-              <button
-                type="button"
-                onClick={() => setRegFilterCategory('ALL')}
-                className={`px-3 py-1.5 rounded-xl font-medium transition-all cursor-pointer ${
-                  regFilterCategory === 'ALL'
-                    ? 'bg-[#646464] text-white font-bold shadow-xs'
-                    : 'text-zinc-600 hover:text-zinc-900'
-                }`}
-              >
-                Semua ({registeredList.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setRegFilterCategory('SMP')}
-                className={`px-3 py-1.5 rounded-xl font-medium transition-all cursor-pointer ${
-                  regFilterCategory === 'SMP'
-                    ? 'bg-[#646464] text-white font-bold shadow-xs'
-                    : 'text-zinc-600 hover:text-zinc-900'
-                }`}
-              >
-                SMP ({registeredList.filter((p) => p.category === 'SMP').length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setRegFilterCategory('SMA')}
-                className={`px-3 py-1.5 rounded-xl font-medium transition-all cursor-pointer ${
-                  regFilterCategory === 'SMA'
-                    ? 'bg-[#646464] text-white font-bold shadow-xs'
-                    : 'text-zinc-600 hover:text-zinc-900'
-                }`}
-              >
-                SMA ({registeredList.filter((p) => p.category === 'SMA').length})
-              </button>
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Category Filter (Jenjang) */}
+              <div className="flex items-center gap-1 bg-white border border-[#D5D5D5] p-1 rounded-2xl text-xs shadow-2xs">
+                <button
+                  type="button"
+                  onClick={() => setRegFilterCategory('ALL')}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+                    regFilterCategory === 'ALL'
+                      ? 'bg-[#53585E] text-white shadow-xs'
+                      : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+                  }`}
+                >
+                  Semua Jenjang ({registeredList.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRegFilterCategory('SMP')}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+                    regFilterCategory === 'SMP'
+                      ? 'bg-[#53585E] text-white shadow-xs'
+                      : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+                  }`}
+                >
+                  SMP ({registeredList.filter((p) => p.category === 'SMP').length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRegFilterCategory('SMA')}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+                    regFilterCategory === 'SMA'
+                      ? 'bg-[#53585E] text-white shadow-xs'
+                      : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+                  }`}
+                >
+                  SMA ({registeredList.filter((p) => p.category === 'SMA').length})
+                </button>
+              </div>
+
+              {/* Stage Filter (Babak) */}
+              <div className="flex items-center gap-1 bg-white border border-[#D5D5D5] p-1 rounded-2xl text-xs shadow-2xs">
+                <button
+                  type="button"
+                  onClick={() => setRegFilterStage('ALL')}
+                  className={`px-2.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+                    regFilterStage === 'ALL'
+                      ? 'bg-[#53585E] text-white shadow-xs'
+                      : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+                  }`}
+                >
+                  Semua Babak ({registeredList.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRegFilterStage('Penyisihan')}
+                  className={`px-2.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+                    regFilterStage === 'Penyisihan'
+                      ? 'bg-[#53585E] text-white shadow-xs'
+                      : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+                  }`}
+                >
+                  Penyisihan ({registeredList.filter((p) => (p.stage || 'Penyisihan') === 'Penyisihan').length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRegFilterStage('Semifinal')}
+                  className={`px-2.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+                    regFilterStage === 'Semifinal'
+                      ? 'bg-[#53585E] text-white shadow-xs'
+                      : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+                  }`}
+                >
+                  Semifinal ({registeredList.filter((p) => p.stage === 'Semifinal').length})
+                </button>
+              </div>
             </div>
 
             <div className="relative flex-1 max-w-md">
@@ -2579,7 +2692,7 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
                       <th className="py-3 px-4 font-bold text-center w-12">No</th>
                       <th className="py-3 px-4 font-bold">Nama Lengkap (Kredensial Login)</th>
                       <th className="py-3 px-4 font-bold">Asal Sekolah & Kota</th>
-                      <th className="py-3 px-3 font-bold text-center">Jenjang</th>
+                      <th className="py-3 px-3 font-bold text-center">Jenjang & Babak</th>
                       <th className="py-3 px-3 font-bold font-mono">NISN / Sandi Awal</th>
                       <th className="py-3 px-3 font-bold font-mono">Kata Sandi Aktif</th>
                       <th className="py-3 px-4 font-bold">Email Pendaftaran</th>
@@ -2590,6 +2703,7 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
                     {registeredList
                       .filter((p) => {
                         if (regFilterCategory !== 'ALL' && p.category !== regFilterCategory) return false;
+                        if (regFilterStage !== 'ALL' && (p.stage || 'Penyisihan') !== regFilterStage) return false;
                         if (!regSearchQuery.trim()) return true;
                         const q = regSearchQuery.toLowerCase();
                         return (
@@ -2638,15 +2752,20 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
                               </div>
                             </td>
                             <td className="py-3 px-3 text-center">
-                              <span
-                                className={`inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-lg border ${
-                                  p.category === 'SMP'
-                                    ? 'bg-blue-50 text-blue-700 border-blue-200'
-                                    : 'bg-amber-50 text-amber-700 border-amber-200'
-                                }`}
-                              >
-                                {p.category}
-                              </span>
+                              <div className="flex flex-col items-center gap-1">
+                                <span
+                                  className={`inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-lg border ${
+                                    p.category === 'SMP'
+                                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                      : 'bg-amber-50 text-amber-700 border-amber-200'
+                                  }`}
+                                >
+                                  {p.category}
+                                </span>
+                                <span className="inline-block text-[9px] font-semibold px-2 py-0.5 rounded-md bg-[#83B9DF]/20 text-[#53585E] border border-[#83B9DF]/40">
+                                  {p.stage || 'Penyisihan'}
+                                </span>
+                              </div>
                             </td>
                             <td className="py-3 px-3 font-mono text-xs font-bold text-zinc-900">
                               <div className="flex items-center gap-1.5">
@@ -2800,9 +2919,9 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
             </div>
 
             <form onSubmit={handleAddManualSubmit} className="space-y-3.5 text-xs">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="block font-bold text-zinc-800 mb-1">Jenjang / Kategori *</label>
+                  <label className="block font-bold text-zinc-800 mb-1">Jenjang *</label>
                   <select
                     value={mCategory}
                     onChange={(e) => setMCategory(e.target.value as OlympiadCategory)}
@@ -2810,6 +2929,18 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
                   >
                     <option value="SMP">SMP / MTs</option>
                     <option value="SMA">SMA / MA / SMK</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold text-zinc-800 mb-1">Babak *</label>
+                  <select
+                    value={mStage}
+                    onChange={(e) => setMStage(e.target.value as CompetitionStage)}
+                    className="w-full bg-[#f7f7f8] border border-[#D5D5D5] rounded-xl px-3 py-2 text-zinc-900 focus:outline-none focus:border-[#646464]"
+                  >
+                    <option value="Penyisihan">Penyisihan</option>
+                    <option value="Semifinal">Semifinal</option>
+                    <option value="Final">Final</option>
                   </select>
                 </div>
                 <div>
@@ -3301,40 +3432,105 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
               </div>
 
               <div className="flex flex-wrap items-center gap-2 text-xs">
-                {/* Category Filter */}
-                <div className="flex items-center bg-white border border-[#D5D5D5] p-0.5 rounded-2xl">
+                {/* Category Filter (Jenjang) */}
+                <div className="flex items-center bg-white border border-[#D5D5D5] p-0.5 rounded-2xl shadow-2xs">
                   {(['ALL', 'SMP', 'SMA'] as const).map((cat) => (
                     <button
                       key={cat}
                       onClick={() => setQbCategoryFilter(cat)}
-                      className={`px-3 py-1 rounded-xl text-[11px] font-medium transition-colors cursor-pointer ${
+                      className={`px-3 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
                         qbCategoryFilter === cat
-                          ? 'bg-[#646464] text-white font-semibold shadow-2xs'
-                          : 'text-zinc-600 hover:text-zinc-900'
+                          ? 'bg-[#53585E] text-white shadow-xs'
+                          : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
                       }`}
                     >
-                      {cat === 'ALL' ? 'Semua Jenjang' : cat}
+                      {cat === 'ALL'
+                        ? `Semua Jenjang (${questionsList.length})`
+                        : `${cat} (${questionsList.filter((q) => q.category === cat).length})`}
                     </button>
                   ))}
                 </div>
 
-                {/* Stage Filter */}
-                <div className="flex items-center bg-white border border-[#D5D5D5] p-0.5 rounded-2xl">
+                {/* Stage Filter (Babak) */}
+                <div className="flex items-center bg-white border border-[#D5D5D5] p-0.5 rounded-2xl shadow-2xs">
                   {(['ALL', 'Penyisihan', 'Semifinal', 'Final'] as const).map((stg) => (
                     <button
                       key={stg}
                       onClick={() => setQbStageFilter(stg)}
-                      className={`px-2.5 py-1 rounded-xl text-[11px] font-medium transition-colors cursor-pointer ${
+                      className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
                         qbStageFilter === stg
-                          ? 'bg-[#646464] text-white font-semibold shadow-2xs'
-                          : 'text-zinc-600 hover:text-zinc-900'
+                          ? 'bg-[#53585E] text-white shadow-xs'
+                          : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
                       }`}
                     >
-                      {stg === 'ALL' ? 'Semua Babak' : stg}
+                      {stg === 'ALL'
+                        ? `Semua Babak (${questionsList.length})`
+                        : `${stg} (${questionsList.filter((q) => q.stage === stg).length})`}
                     </button>
                   ))}
                 </div>
               </div>
+            </div>
+
+            {/* Quick Combination Bar */}
+            <div className="flex items-center gap-2 flex-wrap pt-1 text-xs">
+              <span className="text-[11px] font-semibold text-zinc-500">Pilihan Cepat Paket:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setQbCategoryFilter('SMP');
+                  setQbStageFilter('Penyisihan');
+                }}
+                className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer border ${
+                  qbCategoryFilter === 'SMP' && qbStageFilter === 'Penyisihan'
+                    ? 'bg-[#53585E] text-white border-[#53585E]'
+                    : 'bg-white hover:bg-[#83B9DF]/15 text-[#53585E] border-[#D5D5D5] hover:border-[#83B9DF]'
+                }`}
+              >
+                SMP · Penyisihan
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setQbCategoryFilter('SMP');
+                  setQbStageFilter('Semifinal');
+                }}
+                className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer border ${
+                  qbCategoryFilter === 'SMP' && qbStageFilter === 'Semifinal'
+                    ? 'bg-[#53585E] text-white border-[#53585E]'
+                    : 'bg-white hover:bg-[#83B9DF]/15 text-[#53585E] border-[#D5D5D5] hover:border-[#83B9DF]'
+                }`}
+              >
+                SMP · Semifinal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setQbCategoryFilter('SMA');
+                  setQbStageFilter('Penyisihan');
+                }}
+                className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer border ${
+                  qbCategoryFilter === 'SMA' && qbStageFilter === 'Penyisihan'
+                    ? 'bg-[#53585E] text-white border-[#53585E]'
+                    : 'bg-white hover:bg-[#83B9DF]/15 text-[#53585E] border-[#D5D5D5] hover:border-[#83B9DF]'
+                }`}
+              >
+                SMA · Penyisihan
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setQbCategoryFilter('SMA');
+                  setQbStageFilter('Semifinal');
+                }}
+                className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer border ${
+                  qbCategoryFilter === 'SMA' && qbStageFilter === 'Semifinal'
+                    ? 'bg-[#53585E] text-white border-[#53585E]'
+                    : 'bg-white hover:bg-[#83B9DF]/15 text-[#53585E] border-[#D5D5D5] hover:border-[#83B9DF]'
+                }`}
+              >
+                SMA · Semifinal
+              </button>
             </div>
 
             {/* Questions Items List */}

@@ -119,6 +119,7 @@ export interface LiveParticipantMonitoring {
   name: string;
   school: string;
   category: OlympiadCategory;
+  stage?: CompetitionStage;
   email?: string;
   city?: string;
   nisnOrRegNumber?: string;
