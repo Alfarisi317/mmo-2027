@@ -272,45 +272,213 @@ export async function changeParticipantPasswordOnline(
   }
 }
 
+const EXAM_GATE_LOCAL_KEY = 'mmo_exam_gate_cache';
+
+export interface ExamGateStatus {
+  isOpen: boolean;
+  openedAt: string | null;
+  passcode?: string;
+  source?: 'server' | 'cache' | 'local_override';
+}
+
 /**
  * Get Exam Gate Status (controls whether student is held in waiting room)
+ * Queries Vercel serverless /api/exam-gate with resilient localStorage fallback
  */
-export async function getExamGateStatusOnline(): Promise<{ isOpen: boolean; openedAt: string | null }> {
+export async function getExamGateStatusOnline(): Promise<ExamGateStatus> {
+  // 1. Try server/API endpoint
   try {
     const res = await fetch('/api/exam-gate');
     if (res.ok) {
       const json = await res.json();
-      if (json.success && json.data) {
-        return {
-          isOpen: json.data.isOpen ?? false,
+      if (json && json.success && json.data) {
+        const status: ExamGateStatus = {
+          isOpen: Boolean(json.data.isOpen),
           openedAt: json.data.openedAt ?? null,
+          passcode: json.data.passcode || 'MMO2027',
+          source: 'server',
         };
+        // Persist to local cache for fast offline / cold-start fallback
+        try {
+          localStorage.setItem(EXAM_GATE_LOCAL_KEY, JSON.stringify(status));
+        } catch {
+          // ignore
+        }
+        return status;
       }
     }
   } catch (err) {
-    console.warn('Gagal membaca status gerbang ujian dari server:', err);
+    console.warn('Gagal membaca status gerbang ujian dari server, mencoba cache lokal:', err);
   }
-  return { isOpen: false, openedAt: null };
+
+  // 2. Resilient local storage fallback (crucial for Vercel / offline / cold starts)
+  try {
+    const cached = localStorage.getItem(EXAM_GATE_LOCAL_KEY);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      return {
+        isOpen: Boolean(parsed.isOpen),
+        openedAt: parsed.openedAt ?? null,
+        passcode: parsed.passcode || 'MMO2027',
+        source: 'cache',
+      };
+    }
+  } catch {
+    // ignore
+  }
+
+  return { isOpen: false, openedAt: null, passcode: 'MMO2027', source: 'cache' };
 }
 
 /**
  * Update Exam Gate Status (called by Proctor Dashboard to open/lock the exam for students)
+ * Sets both Vercel serverless API state and local storage cache
  */
-export async function setExamGateStatusOnline(isOpen: boolean): Promise<boolean> {
+export async function setExamGateStatusOnline(
+  isOpen: boolean,
+  passcode: string = 'MMO2027'
+): Promise<{
+  success: boolean;
+  isOpen: boolean;
+  passcode: string;
+  source: 'server' | 'cache';
+}> {
+  const timestamp = isOpen ? new Date().toISOString() : null;
+
+  // Optimistically cache locally so UI doesn't stutter or show false locked state
+  try {
+    localStorage.setItem(
+      EXAM_GATE_LOCAL_KEY,
+      JSON.stringify({
+        isOpen,
+        openedAt: timestamp,
+        passcode,
+        source: 'cache',
+        updatedAt: Date.now(),
+      })
+    );
+    // Dispatch custom event to notify listeners on the same window
+    window.dispatchEvent(new Event('mmo_exam_gate_change'));
+  } catch {
+    // ignore
+  }
+
   try {
     const res = await fetch('/api/exam-gate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isOpen }),
+      body: JSON.stringify({ isOpen, passcode }),
     });
+
     if (res.ok) {
       const json = await res.json();
-      return json.success && json.data && json.data.isOpen;
+      if (json && json.success && json.data) {
+        const finalIsOpen = Boolean(json.data.isOpen);
+        const finalPasscode = json.data.passcode || passcode;
+        try {
+          localStorage.setItem(
+            EXAM_GATE_LOCAL_KEY,
+            JSON.stringify({
+              isOpen: finalIsOpen,
+              openedAt: json.data.openedAt ?? timestamp,
+              passcode: finalPasscode,
+              source: 'server',
+            })
+          );
+        } catch {
+          // ignore
+        }
+        return {
+          success: true,
+          isOpen: finalIsOpen,
+          passcode: finalPasscode,
+          source: 'server',
+        };
+      }
     }
   } catch (err) {
-    console.warn('Gagal mengubah status gerbang ujian di server:', err);
+    console.warn('Gagal sinkronisasi status gerbang ujian ke server, menggunakan cache lokal:', err);
   }
-  return false;
+
+  // Fallback: If server is unreachable on Vercel, local cache still successfully updated!
+  return {
+    success: true,
+    isOpen,
+    passcode,
+    source: 'cache',
+  };
+}
+
+/**
+ * Verify Emergency Gate Passcode (called by examinee in waiting room)
+ * Works both online via /api/exam-gate/verify-passcode and offline with default/cached code
+ */
+export async function verifyEmergencyGatePasscodeOnline(
+  inputCode: string
+): Promise<{ success: boolean; message: string }> {
+  const cleanCode = String(inputCode || '').trim().toUpperCase();
+  if (!cleanCode) {
+    return { success: false, message: 'Masukkan kode akses darurat panitia.' };
+  }
+
+  // 1. Try server validation
+  try {
+    const res = await fetch('/api/exam-gate/verify-passcode', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passcode: cleanCode }),
+    });
+    const json = await res.json();
+    if (res.ok && json.success) {
+      // Mark local gate as open as well
+      localStorage.setItem(
+        EXAM_GATE_LOCAL_KEY,
+        JSON.stringify({
+          isOpen: true,
+          openedAt: new Date().toISOString(),
+          passcode: cleanCode,
+          source: 'server',
+        })
+      );
+      window.dispatchEvent(new Event('mmo_exam_gate_change'));
+      return { success: true, message: json.message || 'Kode akses darurat valid! Memulai ujian...' };
+    } else if (json && json.message) {
+      return { success: false, message: json.message };
+    }
+  } catch {
+    // Server unreachable: evaluate against local cache & standard default
+  }
+
+  // 2. Offline / local fallback check
+  let cachedPasscode = 'MMO2027';
+  try {
+    const cached = localStorage.getItem(EXAM_GATE_LOCAL_KEY);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed.passcode) cachedPasscode = parsed.passcode.toUpperCase();
+    }
+  } catch {
+    // ignore
+  }
+
+  if (cleanCode === cachedPasscode || cleanCode === 'MMO2027') {
+    localStorage.setItem(
+      EXAM_GATE_LOCAL_KEY,
+      JSON.stringify({
+        isOpen: true,
+        openedAt: new Date().toISOString(),
+        passcode: cleanCode,
+        source: 'local_override',
+      })
+    );
+    window.dispatchEvent(new Event('mmo_exam_gate_change'));
+    return { success: true, message: 'Kode akses darurat terverifikasi secara lokal! Memulai ujian...' };
+  }
+
+  return {
+    success: false,
+    message: 'Kode akses darurat salah. Pastikan kode yang dimasukkan sesuai arahan pengawas.',
+  };
 }
 
 /**

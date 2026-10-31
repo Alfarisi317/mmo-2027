@@ -45,6 +45,7 @@ import {
   fetchRegisteredParticipantsFromServer,
   getExamGateStatusOnline,
   changeParticipantPasswordOnline,
+  verifyEmergencyGatePasscodeOnline,
 } from '../services/registeredParticipants';
 
 interface LandingPortalProps {
@@ -74,6 +75,11 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
   const [isGateOpen, setIsGateOpen] = useState<boolean>(false);
   const [lastGateCheckTime, setLastGateCheckTime] = useState<string>('');
   const [showTrialModal, setShowTrialModal] = useState<boolean>(false);
+
+  // Kode Akses Darurat Panitia (Direct Override for Vercel / Emergency Gate Opening)
+  const [emergencyPasscodeInput, setEmergencyPasscodeInput] = useState<string>('');
+  const [isVerifyingPasscode, setIsVerifyingPasscode] = useState<boolean>(false);
+  const [emergencyPasscodeError, setEmergencyPasscodeError] = useState<string | null>(null);
 
   // Ubah Kata Sandi Modal State (dalam Ruang Tunggu)
   const [showChangePasswordModal, setShowChangePasswordModal] = useState<boolean>(false);
@@ -158,11 +164,51 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
 
     pollGate();
     const interval = setInterval(pollGate, 2000);
+
+    const handleGateEvent = () => {
+      pollGate();
+    };
+    window.addEventListener('mmo_exam_gate_change', handleGateEvent);
+
     return () => {
       isMounted = false;
       clearInterval(interval);
+      window.removeEventListener('mmo_exam_gate_change', handleGateEvent);
     };
   }, [waitingParticipant, onStartExam]);
+
+  const handleVerifyEmergencyPasscode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!emergencyPasscodeInput.trim() || !waitingParticipant) return;
+    setIsVerifyingPasscode(true);
+    setEmergencyPasscodeError(null);
+    try {
+      const res = await verifyEmergencyGatePasscodeOnline(emergencyPasscodeInput);
+      if (res.success) {
+        setIsGateOpen(true);
+        const p = waitingParticipant;
+        setTimeout(() => {
+          onStartExam({
+            id: p.id || `MMO27-${p.category}-${Math.floor(100 + Math.random() * 900)}`,
+            fullName: p.fullName,
+            school: p.school,
+            nisnOrRegNumber: p.nisnOrRegNumber,
+            category: p.category,
+            stage: p.stage || 'Penyisihan',
+            city: p.city || 'Indonesia',
+            email: p.email,
+            supervisionMode: 'WEB_CAM',
+          });
+        }, 500);
+      } else {
+        setEmergencyPasscodeError(res.message);
+      }
+    } catch (err: any) {
+      setEmergencyPasscodeError(err?.message || 'Gagal memverifikasi kode akses darurat.');
+    } finally {
+      setIsVerifyingPasscode(false);
+    }
+  };
 
   const handleChangePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -269,15 +315,15 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
           {/* Step 1 */}
           <button
             onClick={() => setCurrentStep(1)}
-            className={`flex flex-col sm:flex-row items-center justify-center gap-2 py-2.5 px-3 rounded-2xl transition-all cursor-pointer ${
+            className={`flex flex-col sm:flex-row items-center justify-center gap-2 py-2.5 px-3 rounded-2xl transition-all duration-300 cursor-pointer ${
               currentStep === 1
-                ? 'bg-[#646464] text-white font-bold shadow-xs'
-                : 'bg-white text-zinc-700 hover:text-zinc-950 border border-[#D5D5D5]'
+                ? 'bg-[#53585E] text-white font-bold shadow-md border border-[#83B9DF]/40 -translate-y-0.5'
+                : 'bg-white text-zinc-700 hover:text-[#53585E] hover:border-[#83B9DF] hover:shadow-xs border border-[#D5D5D5]'
             }`}
           >
             <span
-              className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono font-bold shrink-0 ${
-                currentStep === 1 ? 'bg-white/20 text-white' : 'bg-[#D5D5D5] text-[#646464]'
+              className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono font-bold shrink-0 transition-colors ${
+                currentStep === 1 ? 'bg-[#83B9DF] text-white' : 'bg-[#D5D5D5] text-[#53585E]'
               }`}
             >
               1
@@ -292,18 +338,18 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
             onClick={() => {
               if (currentStep >= 2 || hasAgreedToRules) setCurrentStep(2);
             }}
-            className={`flex flex-col sm:flex-row items-center justify-center gap-2 py-2.5 px-3 rounded-2xl transition-all ${
+            className={`flex flex-col sm:flex-row items-center justify-center gap-2 py-2.5 px-3 rounded-2xl transition-all duration-300 ${
               currentStep === 2
-                ? 'bg-[#646464] text-white font-bold shadow-xs'
+                ? 'bg-[#53585E] text-white font-bold shadow-md border border-[#83B9DF]/40 -translate-y-0.5'
                 : currentStep > 2
-                ? 'bg-white text-zinc-900 border border-[#D5D5D5] cursor-pointer'
+                ? 'bg-white text-zinc-900 border border-[#D5D5D5] hover:border-[#83B9DF] cursor-pointer'
                 : 'bg-zinc-100/60 text-zinc-400 border border-zinc-200 cursor-not-allowed'
             }`}
           >
             <span
-              className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono font-bold shrink-0 ${
+              className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono font-bold shrink-0 transition-colors ${
                 currentStep === 2
-                  ? 'bg-white/20 text-white'
+                  ? 'bg-[#83B9DF] text-white'
                   : currentStep > 2
                   ? 'bg-emerald-100 text-emerald-800'
                   : 'bg-zinc-200 text-zinc-400'
@@ -321,15 +367,15 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
             onClick={() => {
               if (hasAgreedToRules) setCurrentStep(3);
             }}
-            className={`flex flex-col sm:flex-row items-center justify-center gap-2 py-2.5 px-3 rounded-2xl transition-all ${
+            className={`flex flex-col sm:flex-row items-center justify-center gap-2 py-2.5 px-3 rounded-2xl transition-all duration-300 ${
               currentStep === 3
-                ? 'bg-[#646464] text-white font-bold shadow-xs'
+                ? 'bg-[#53585E] text-white font-bold shadow-md border border-[#83B9DF]/40 -translate-y-0.5'
                 : 'bg-zinc-100/60 text-zinc-400 border border-zinc-200 cursor-not-allowed'
             }`}
           >
             <span
-              className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono font-bold shrink-0 ${
-                currentStep === 3 ? 'bg-white/20 text-white' : 'bg-zinc-200 text-zinc-400'
+              className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono font-bold shrink-0 transition-colors ${
+                currentStep === 3 ? 'bg-[#83B9DF] text-white' : 'bg-zinc-200 text-zinc-400'
               }`}
             >
               3
@@ -347,10 +393,10 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
       {currentStep === 1 && (
         <div className="space-y-8 animate-in fade-in duration-200">
           {/* Main Hero Card with curved borders and soft wave accent */}
-          <div className="bg-[#fafafa] border border-[#D5D5D5] rounded-3xl p-6 sm:p-10 shadow-xs relative overflow-hidden">
-            {/* Subtle curved background graphic */}
+          <div className="bg-[#fafafa] border border-[#D5D5D5] rounded-3xl p-6 sm:p-10 shadow-xs relative overflow-hidden transition-all duration-300 hover:border-[#83B9DF]/70 hover:shadow-[0_10px_30px_rgba(131,185,223,0.18)]">
+            {/* Subtle curved background graphic with Sky Blue hint */}
             <svg
-              className="absolute -right-12 -bottom-12 w-80 h-80 text-[#D5D5D5]/35 pointer-events-none"
+              className="absolute -right-12 -bottom-12 w-80 h-80 text-[#83B9DF]/12 pointer-events-none"
               viewBox="0 0 200 200"
               fill="currentColor"
             >
@@ -359,69 +405,70 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
 
             <div className="max-w-3xl space-y-6 relative z-10">
               {/* Organizer Badge */}
-              <div className="inline-flex items-center gap-2 bg-[#646464] text-white px-3.5 py-1.5 rounded-2xl text-xs font-semibold shadow-xs">
-                <Award className="w-4 h-4 text-[#D5D5D5]" />
+              <div className="inline-flex items-center gap-2 bg-[#53585E] text-white px-3.5 py-1.5 rounded-2xl text-xs font-semibold shadow-xs border border-[#83B9DF]/30">
+                <Award className="w-4 h-4 text-[#83B9DF]" />
                 <span>HMPS MATRIKS Bidang Keilmuan · Prodi Pendidikan Matematika UMM</span>
               </div>
 
-              {/* Title & Theme Banner in #646464 box with rounded-3xl */}
+              {/* Title & Theme Banner in #53585E box with rounded-3xl and Sky Blue accent */}
               <div>
-                <h1 className="text-2xl sm:text-4xl font-extrabold text-zinc-900 tracking-tight leading-tight">
+                <h1 className="text-2xl sm:text-4xl font-extrabold text-[#53585E] tracking-tight leading-tight">
                   Matriks Mathematics Olympiad (MMO) 2027
                 </h1>
                 
-                {/* Official Theme Box with #646464 & #D5D5D5 */}
-                <div className="mt-4 bg-[#646464] border border-[#646464] rounded-3xl p-6 sm:p-7 text-white shadow-sm">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <Sparkles className="w-4 h-4 text-[#D5D5D5]" />
-                    <span className="text-[11px] font-bold tracking-widest uppercase text-[#D5D5D5]">
+                {/* Official Theme Box with #53585E & #83B9DF */}
+                <div className="mt-4 bg-[#53585E] border border-[#53585E] rounded-3xl p-6 sm:p-7 text-white shadow-md relative overflow-hidden group hover:shadow-[0_10px_30px_rgba(131,185,223,0.3)] transition-all duration-300">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-[#83B9DF]/10 rounded-full blur-2xl group-hover:bg-[#83B9DF]/20 transition-all duration-500" />
+                  <div className="flex items-center gap-2 mb-1.5 relative z-10">
+                    <Sparkles className="w-4 h-4 text-[#83B9DF] animate-pulse" />
+                    <span className="text-[11px] font-bold tracking-widest uppercase text-[#83B9DF]">
                       Tema Resmi Kompetisi
                     </span>
                   </div>
-                  <p className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
+                  <p className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white relative z-10">
                     “Matriks Mathematics Olympiad: Explore, Think, Excel”
                   </p>
-                  <p className="text-sm font-medium text-[#D5D5D5] mt-1.5">
+                  <p className="text-sm font-medium text-[#83B9DF] mt-1.5 relative z-10">
                     Jelajahi Matematika · Asah Penalaran · Tunjukkan Kemampuan Terbaik
                   </p>
                 </div>
               </div>
 
-              {/* 3 Panduan Tema Kompetisi (Explore, Think, Excel) - Berlaku di Semua Babak */}
+              {/* 3 Panduan Tema Kompetisi (Explore, Think, Excel) - Terintegrasi di Semua Babak */}
               <div className="space-y-3 pt-2">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                   <div className="flex items-center gap-2">
-                    <Compass className="w-4 h-4 text-[#646464]" />
-                    <h3 className="text-xs font-bold text-zinc-800 uppercase tracking-wider">
-                      Pengertian & Fokus Kompetensi Tema MMO 2027:
+                    <Compass className="w-4 h-4 text-[#53585E]" />
+                    <h3 className="text-xs font-bold text-[#53585E] uppercase tracking-wider">
+                      3 Pilar Nalar Matematika MMO 2027 (Terintegrasi di Seluruh Babak):
                     </h3>
                   </div>
                   <span className="text-[11px] font-medium text-zinc-500">
-                    Berlaku pada Seluruh Babak Kompetisi
+                    Berlaku pada Babak Penyisihan, Semifinal, hingga Final
                   </span>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
                   {/* Tema 1: EXPLORE */}
-                  <div className="bg-white border border-[#D5D5D5] p-5 rounded-2xl shadow-xs hover:border-[#646464] transition-all flex flex-col justify-between">
+                  <div className="bg-white border border-[#D5D5D5] hover:border-[#83B9DF] p-5 rounded-2xl shadow-xs hover:shadow-[0_10px_25px_rgba(131,185,223,0.25)] hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between group cursor-default">
                     <div>
                       <div className="flex items-center justify-between mb-2.5">
-                        <span className="text-[10px] font-bold uppercase tracking-wider bg-[#f0f0f0] text-zinc-700 px-2.5 py-1 rounded-lg border border-[#D5D5D5]">
+                        <span className="text-[10px] font-bold uppercase tracking-wider bg-[#83B9DF]/15 text-[#53585E] group-hover:bg-[#83B9DF] group-hover:text-white px-2.5 py-1 rounded-lg border border-[#83B9DF]/40 transition-colors duration-300">
                           Pilar 1 · Eksplorasi
                         </span>
-                        <div className="w-7 h-7 rounded-xl bg-zinc-100 flex items-center justify-center text-[#646464]">
+                        <div className="w-8 h-8 rounded-xl bg-[#53585E] text-[#83B9DF] group-hover:bg-[#83B9DF] group-hover:text-white flex items-center justify-center transition-all duration-300 shadow-xs">
                           <Compass className="w-4 h-4" />
                         </div>
                       </div>
-                      <h4 className="text-base font-extrabold text-zinc-900 tracking-tight">
+                      <h4 className="text-base font-extrabold text-[#53585E] tracking-tight group-hover:text-[#41454a] transition-colors">
                         EXPLORE
                       </h4>
                       <p className="text-xs text-zinc-600 mt-2 leading-relaxed">
-                        Kemampuan menyelidiki, mengamati struktur bilangan, pola bentuk geometris, relasi data tabel, dan mengidentifikasi informasi tersembunyi sebagai langkah awal penyusunan strategi pemecahan masalah.
+                        Kemampuan menyelidiki dan mengamati struktur bilangan, pola bentuk geometris, relasi data tabel, dan mengidentifikasi informasi tersembunyi sebagai langkah awal pemecahan masalah.
                       </p>
                     </div>
                     <div className="mt-4 pt-3 border-t border-[#D5D5D5]/70 space-y-1">
-                      <div className="text-[11px] font-bold text-zinc-800">
+                      <div className="text-[11px] font-bold text-[#53585E]">
                         Fokus Kompetensi:
                       </div>
                       <p className="text-[11px] text-zinc-600 leading-normal">
@@ -431,17 +478,17 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                   </div>
 
                   {/* Tema 2: THINK */}
-                  <div className="bg-white border border-[#D5D5D5] p-5 rounded-2xl shadow-xs hover:border-[#646464] transition-all flex flex-col justify-between">
+                  <div className="bg-white border border-[#D5D5D5] hover:border-[#83B9DF] p-5 rounded-2xl shadow-xs hover:shadow-[0_10px_25px_rgba(131,185,223,0.25)] hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between group cursor-default">
                     <div>
                       <div className="flex items-center justify-between mb-2.5">
-                        <span className="text-[10px] font-bold uppercase tracking-wider bg-[#f0f0f0] text-zinc-700 px-2.5 py-1 rounded-lg border border-[#D5D5D5]">
+                        <span className="text-[10px] font-bold uppercase tracking-wider bg-[#83B9DF]/15 text-[#53585E] group-hover:bg-[#83B9DF] group-hover:text-white px-2.5 py-1 rounded-lg border border-[#83B9DF]/40 transition-colors duration-300">
                           Pilar 2 · Penalaran
                         </span>
-                        <div className="w-7 h-7 rounded-xl bg-zinc-100 flex items-center justify-center text-[#646464]">
+                        <div className="w-8 h-8 rounded-xl bg-[#53585E] text-[#83B9DF] group-hover:bg-[#83B9DF] group-hover:text-white flex items-center justify-center transition-all duration-300 shadow-xs">
                           <Brain className="w-4 h-4" />
                         </div>
                       </div>
-                      <h4 className="text-base font-extrabold text-zinc-900 tracking-tight">
+                      <h4 className="text-base font-extrabold text-[#53585E] tracking-tight group-hover:text-[#41454a] transition-colors">
                         THINK
                       </h4>
                       <p className="text-xs text-zinc-600 mt-2 leading-relaxed">
@@ -449,7 +496,7 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                       </p>
                     </div>
                     <div className="mt-4 pt-3 border-t border-[#D5D5D5]/70 space-y-1">
-                      <div className="text-[11px] font-bold text-zinc-800">
+                      <div className="text-[11px] font-bold text-[#53585E]">
                         Fokus Kompetensi:
                       </div>
                       <p className="text-[11px] text-zinc-600 leading-normal">
@@ -459,17 +506,17 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                   </div>
 
                   {/* Tema 3: EXCEL */}
-                  <div className="bg-white border border-[#D5D5D5] p-5 rounded-2xl shadow-xs hover:border-[#646464] transition-all flex flex-col justify-between">
+                  <div className="bg-white border border-[#D5D5D5] hover:border-[#83B9DF] p-5 rounded-2xl shadow-xs hover:shadow-[0_10px_25px_rgba(131,185,223,0.25)] hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between group cursor-default">
                     <div>
                       <div className="flex items-center justify-between mb-2.5">
-                        <span className="text-[10px] font-bold uppercase tracking-wider bg-[#f0f0f0] text-zinc-700 px-2.5 py-1 rounded-lg border border-[#D5D5D5]">
+                        <span className="text-[10px] font-bold uppercase tracking-wider bg-[#83B9DF]/15 text-[#53585E] group-hover:bg-[#83B9DF] group-hover:text-white px-2.5 py-1 rounded-lg border border-[#83B9DF]/40 transition-colors duration-300">
                           Pilar 3 · Keunggulan
                         </span>
-                        <div className="w-7 h-7 rounded-xl bg-zinc-100 flex items-center justify-center text-[#646464]">
+                        <div className="w-8 h-8 rounded-xl bg-[#53585E] text-[#83B9DF] group-hover:bg-[#83B9DF] group-hover:text-white flex items-center justify-center transition-all duration-300 shadow-xs">
                           <Trophy className="w-4 h-4" />
                         </div>
                       </div>
-                      <h4 className="text-base font-extrabold text-zinc-900 tracking-tight">
+                      <h4 className="text-base font-extrabold text-[#53585E] tracking-tight group-hover:text-[#41454a] transition-colors">
                         EXCEL
                       </h4>
                       <p className="text-xs text-zinc-600 mt-2 leading-relaxed">
@@ -477,7 +524,7 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                       </p>
                     </div>
                     <div className="mt-4 pt-3 border-t border-[#D5D5D5]/70 space-y-1">
-                      <div className="text-[11px] font-bold text-zinc-800">
+                      <div className="text-[11px] font-bold text-[#53585E]">
                         Fokus Kompetensi:
                       </div>
                       <p className="text-[11px] text-zinc-600 leading-normal">
@@ -488,21 +535,21 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                 </div>
               </div>
 
-              {/* Step 1 Actions */}
+              {/* Step 1 Actions with hover elevation and Sky Blue glow */}
               <div className="pt-4 flex flex-wrap items-center gap-3">
                 <button
                   onClick={handleStep1Next}
-                  className="px-6 py-3 bg-[#646464] hover:bg-[#525252] text-white font-bold text-xs sm:text-sm rounded-2xl transition-all flex items-center gap-2 cursor-pointer shadow-xs"
+                  className="px-6 py-3 bg-[#53585E] hover:bg-[#41454a] text-white font-extrabold text-xs sm:text-sm rounded-2xl transition-all duration-300 flex items-center gap-2 cursor-pointer shadow-sm hover:shadow-[0_8px_20px_rgba(131,185,223,0.35)] hover:-translate-y-0.5 border border-[#53585E]"
                 >
                   <span>Lanjut ke Pedoman & Tata Tertib Ujian</span>
-                  <ArrowRight className="w-4 h-4" />
+                  <ArrowRight className="w-4 h-4 text-[#83B9DF]" />
                 </button>
 
                 <button
                   onClick={onOpenDashboard}
-                  className="px-4 py-3 bg-white hover:bg-[#f7f7f8] border border-[#D5D5D5] text-zinc-800 font-semibold text-xs rounded-2xl transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  className="px-4 py-3 bg-white hover:bg-[#f7f7f8] border border-[#D5D5D5] hover:border-[#83B9DF] text-zinc-800 font-semibold text-xs rounded-2xl transition-all duration-300 flex items-center gap-1.5 cursor-pointer shadow-xs hover:shadow-[0_6px_15px_rgba(131,185,223,0.2)] hover:-translate-y-0.5"
                 >
-                  <Monitor className="w-4 h-4 text-[#646464]" />
+                  <Monitor className="w-4 h-4 text-[#53585E]" />
                   <span>Dasbor Pengawas Panitia</span>
                 </button>
               </div>
@@ -516,14 +563,14 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
       {/* ======================================================== */}
       {currentStep === 2 && (
         <div className="space-y-6 animate-in fade-in duration-200">
-          <div className="bg-[#fafafa] border border-[#D5D5D5] rounded-3xl p-6 sm:p-8 shadow-xs space-y-6">
+          <div className="bg-[#fafafa] border border-[#D5D5D5] hover:border-[#83B9DF]/60 rounded-3xl p-6 sm:p-8 shadow-xs space-y-6 transition-all duration-300">
             <div className="flex items-center justify-between pb-4 border-b border-[#D5D5D5]">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-2xl bg-[#646464] text-white flex items-center justify-center font-bold text-xs">
+                <div className="w-8 h-8 rounded-2xl bg-[#53585E] text-[#83B9DF] flex items-center justify-center font-bold text-xs shadow-xs border border-[#83B9DF]/30">
                   2
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-zinc-900">
+                  <h2 className="text-lg font-bold text-[#53585E]">
                     Pedoman Teknis & Tata Tertib Peserta MMO 2027
                   </h2>
                   <p className="text-xs text-zinc-500">
@@ -541,21 +588,21 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
             )}
 
             {/* Scoring System Card */}
-            <div className="bg-white border border-[#D5D5D5] p-5 rounded-2xl shadow-xs space-y-3">
-              <h3 className="text-xs font-bold text-zinc-900 uppercase tracking-wider flex items-center gap-1.5">
-                <Award className="w-4 h-4 text-[#646464]" />
+            <div className="bg-white border border-[#D5D5D5] hover:border-[#83B9DF] p-5 rounded-2xl shadow-xs hover:shadow-[0_8px_20px_rgba(131,185,223,0.2)] transition-all duration-300 space-y-3">
+              <h3 className="text-xs font-bold text-[#53585E] uppercase tracking-wider flex items-center gap-1.5">
+                <Award className="w-4 h-4 text-[#83B9DF]" />
                 1. Sistem Penskoran Resmi (OSN Standard)
               </h3>
               <div className="grid grid-cols-3 gap-2.5 text-center text-xs">
-                <div className="bg-[#fafafa] border border-[#D5D5D5] p-3 rounded-2xl">
+                <div className="bg-[#fafafa] border border-[#D5D5D5] hover:border-emerald-300 p-3 rounded-2xl transition-all">
                   <span className="text-emerald-700 font-mono font-bold text-base block">+4 Poin</span>
                   <span className="text-zinc-700 font-medium text-[11px]">Jawaban Benar</span>
                 </div>
-                <div className="bg-[#fafafa] border border-[#D5D5D5] p-3 rounded-2xl">
+                <div className="bg-[#fafafa] border border-[#D5D5D5] hover:border-rose-300 p-3 rounded-2xl transition-all">
                   <span className="text-rose-700 font-mono font-bold text-base block">-1 Poin</span>
                   <span className="text-zinc-700 font-medium text-[11px]">Jawaban Salah</span>
                 </div>
-                <div className="bg-[#fafafa] border border-[#D5D5D5] p-3 rounded-2xl">
+                <div className="bg-[#fafafa] border border-[#D5D5D5] hover:border-zinc-300 p-3 rounded-2xl transition-all">
                   <span className="text-zinc-500 font-mono font-bold text-base block">0 Poin</span>
                   <span className="text-zinc-700 font-medium text-[11px]">Tidak Dijawab</span>
                 </div>
@@ -563,9 +610,9 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
             </div>
 
             {/* Anti-cheat and Regulations */}
-            <div className="bg-white border border-[#D5D5D5] p-5 rounded-2xl shadow-xs space-y-3 text-xs text-zinc-700">
-              <h3 className="text-xs font-bold text-zinc-900 uppercase tracking-wider flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-[#646464]" />
+            <div className="bg-white border border-[#D5D5D5] hover:border-[#83B9DF] p-5 rounded-2xl shadow-xs hover:shadow-[0_8px_20px_rgba(131,185,223,0.2)] transition-all duration-300 space-y-3 text-xs text-zinc-700">
+              <h3 className="text-xs font-bold text-[#53585E] uppercase tracking-wider flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-[#83B9DF]" />
                 2. Ketentuan Anti-Cheat & Pengawasan Layar
               </h3>
               <ul className="space-y-2.5 list-disc pl-5 leading-relaxed">
@@ -585,7 +632,7 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
             </div>
 
             {/* MANDATORY CHECKBOX in curved container */}
-            <div className="bg-white border-2 border-[#646464] p-4 rounded-2xl shadow-xs">
+            <div className="bg-white border-2 border-[#53585E] hover:border-[#83B9DF] p-4 rounded-2xl shadow-xs transition-all duration-300">
               <label className="flex items-start gap-3 cursor-pointer select-none">
                 <input
                   type="checkbox"
@@ -594,7 +641,7 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                     setHasAgreedToRules(e.target.checked);
                     if (e.target.checked) setValidationError(null);
                   }}
-                  className="mt-1 w-4 h-4 rounded-md border-[#646464] text-[#646464] focus:ring-0 cursor-pointer"
+                  className="mt-1 w-4 h-4 rounded-md border-[#53585E] text-[#53585E] focus:ring-2 focus:ring-[#83B9DF] cursor-pointer"
                 />
                 <span className="text-xs sm:text-sm font-semibold text-zinc-900 leading-snug">
                   Saya telah membaca, memahami, dan menyetujui seluruh pedoman teknis, tata tertib, serta konsekuensi sistem anti-cheat pada ujian MMO 2027.
@@ -606,7 +653,7 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
             <div className="pt-2 flex items-center justify-between gap-4">
               <button
                 onClick={() => setCurrentStep(1)}
-                className="px-4 py-2.5 bg-white hover:bg-zinc-100 border border-[#D5D5D5] text-zinc-800 font-semibold text-xs rounded-2xl transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                className="px-4 py-2.5 bg-white hover:bg-[#f7f7f8] border border-[#D5D5D5] hover:border-[#83B9DF] text-zinc-800 font-semibold text-xs rounded-2xl transition-all duration-300 flex items-center gap-1.5 cursor-pointer shadow-xs hover:-translate-y-0.5"
               >
                 <ArrowLeft className="w-4 h-4" />
                 <span>Kembali ke Profil</span>
@@ -615,10 +662,10 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
               <button
                 onClick={handleStep2Next}
                 disabled={!hasAgreedToRules}
-                className="px-6 py-2.5 bg-[#646464] hover:bg-[#525252] disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs sm:text-sm rounded-2xl transition-all flex items-center gap-2 cursor-pointer shadow-xs"
+                className="px-6 py-2.5 bg-[#53585E] hover:bg-[#41454a] disabled:opacity-40 disabled:cursor-not-allowed text-white font-extrabold text-xs sm:text-sm rounded-2xl transition-all duration-300 flex items-center gap-2 cursor-pointer shadow-sm hover:shadow-[0_8px_20px_rgba(131,185,223,0.35)] hover:-translate-y-0.5 border border-[#53585E]"
               >
                 <span>Lanjut ke Masuk Akun Ujian</span>
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="w-4 h-4 text-[#83B9DF]" />
               </button>
             </div>
           </div>
@@ -638,19 +685,19 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
               {/* Waiting Room Header */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-[#D5D5D5]">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-[#646464] text-white flex items-center justify-center font-bold text-sm shadow-xs">
+                  <div className="w-10 h-10 rounded-2xl bg-[#53585E] text-[#83B9DF] flex items-center justify-center font-bold text-sm shadow-xs border border-[#83B9DF]/30">
                     <Clock className="w-5 h-5 animate-pulse" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="text-[11px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 px-2 py-0.5 rounded-lg border border-amber-300">
+                      <span className="text-[11px] font-bold uppercase tracking-wider bg-[#83B9DF]/15 text-[#53585E] px-2.5 py-0.5 rounded-lg border border-[#83B9DF]/40">
                         Ruang Tunggu Ujian MMO 2027
                       </span>
                       <span className="text-[11px] text-zinc-500 font-mono">
                         Cek Server: {lastGateCheckTime || 'Menghubungkan...'}
                       </span>
                     </div>
-                    <h2 className="text-xl font-extrabold text-zinc-900 mt-0.5">
+                    <h2 className="text-xl font-extrabold text-[#53585E] mt-0.5">
                       Menunggu Pembukaan Akses Soal oleh Panitia
                     </h2>
                   </div>
@@ -660,9 +707,9 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowChangePasswordModal(true)}
-                    className="px-3.5 py-2 bg-white hover:bg-zinc-100 border border-[#D5D5D5] text-zinc-800 text-xs font-semibold rounded-2xl transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    className="px-3.5 py-2 bg-white hover:bg-[#f7f7f8] border border-[#D5D5D5] hover:border-[#83B9DF] text-zinc-800 text-xs font-semibold rounded-2xl transition-all duration-300 flex items-center gap-1.5 cursor-pointer shadow-xs hover:-translate-y-0.5"
                   >
-                    <Key className="w-3.5 h-3.5 text-[#646464]" />
+                    <Key className="w-3.5 h-3.5 text-[#53585E]" />
                     <span>Ubah Kata Sandi</span>
                   </button>
                   <button
@@ -671,7 +718,7 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                       setWaitingParticipant(null);
                       setLoginSuccessParticipant(null);
                     }}
-                    className="px-3.5 py-2 bg-white hover:bg-rose-50 border border-zinc-200 text-rose-700 text-xs font-semibold rounded-2xl transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    className="px-3.5 py-2 bg-white hover:bg-rose-50 border border-zinc-200 hover:border-rose-300 text-rose-700 text-xs font-semibold rounded-2xl transition-all duration-300 flex items-center gap-1.5 cursor-pointer shadow-xs hover:-translate-y-0.5"
                   >
                     <LogOut className="w-3.5 h-3.5 text-rose-600" />
                     <span>Keluar Akun</span>
@@ -777,18 +824,71 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                 </div>
               </div>
 
+              {/* Emergency Access Passcode Card (Panitia Direct Passcode / Vercel Fallback) */}
+              <div className="bg-[#f7f7f8] border border-[#D5D5D5] hover:border-[#83B9DF] rounded-3xl p-5 sm:p-6 shadow-xs hover:shadow-[0_8px_25px_rgba(131,185,223,0.22)] transition-all duration-300 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <KeyRound className="w-4 h-4 text-[#53585E]" />
+                    <span className="text-xs font-bold text-[#53585E] uppercase tracking-wider">
+                      Punya Kode Akses Darurat dari Pengawas?
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-[#53585E] font-mono bg-[#83B9DF]/20 border border-[#83B9DF]/40 px-2 py-0.5 rounded-lg font-bold">
+                    Akses Cepat Pengawas
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-600">
+                  Jika panitia telah mengumumkan bahwa ujian dimulai atau memberikan Kode Akses di Zoom/Meet, Anda dapat memasukkan kode akses panitia di bawah ini untuk langsung membuka lembar soal.
+                </p>
+
+                {emergencyPasscodeError && (
+                  <div className="bg-rose-50 border border-rose-200 text-rose-800 text-xs p-3 rounded-2xl flex items-center gap-2 animate-in fade-in">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>{emergencyPasscodeError}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleVerifyEmergencyPasscode} className="flex flex-col sm:flex-row items-center gap-2.5 pt-1">
+                  <input
+                    type="text"
+                    value={emergencyPasscodeInput}
+                    onChange={(e) => setEmergencyPasscodeInput(e.target.value.toUpperCase())}
+                    placeholder="Masukkan kode akses (Misal: MMO2027)"
+                    className="w-full sm:w-80 bg-white border border-[#D5D5D5] focus:border-[#83B9DF] focus:ring-2 focus:ring-[#83B9DF]/30 rounded-2xl px-4 py-2.5 text-xs sm:text-sm text-zinc-900 font-mono font-bold uppercase tracking-wider placeholder-zinc-400 transition-all duration-200"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isVerifyingPasscode || !emergencyPasscodeInput.trim()}
+                    className="w-full sm:w-auto px-5 py-2.5 bg-[#53585E] hover:bg-[#41454a] disabled:opacity-50 text-white font-extrabold text-xs rounded-2xl transition-all duration-300 flex items-center justify-center gap-1.5 cursor-pointer shadow-xs hover:shadow-[0_8px_20px_rgba(131,185,223,0.35)] hover:-translate-y-0.5 border border-[#53585E] shrink-0"
+                  >
+                    {isVerifyingPasscode ? (
+                      <>
+                        <RotateCcw className="w-3.5 h-3.5 animate-spin text-white" />
+                        <span>Memeriksa...</span>
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck className="w-3.5 h-3.5 text-[#83B9DF]" />
+                        <span>Buka Soal Sekarang</span>
+                      </>
+                    )}
+                  </button>
+                </form>
+              </div>
+
               {/* Uji Coba Tampilan & Simulasi Soal (3 Soal Mandiri) */}
-              <div className="bg-[#27272a] text-white border border-zinc-700 rounded-3xl p-5 sm:p-6 shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex items-start gap-3.5">
-                  <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center shrink-0 border border-white/20 text-[#D5D5D5]">
-                    <Sparkles className="w-6 h-6 text-white" />
+              <div className="bg-[#53585E] text-white border border-[#83B9DF]/40 rounded-3xl p-5 sm:p-6 shadow-md hover:shadow-[0_12px_30px_rgba(131,185,223,0.3)] hover:-translate-y-0.5 transition-all duration-300 flex flex-col md:flex-row md:items-center justify-between gap-4 relative overflow-hidden group">
+                <div className="absolute top-0 right-0 w-36 h-36 bg-[#83B9DF]/10 rounded-full blur-2xl group-hover:bg-[#83B9DF]/20 transition-all duration-500" />
+                <div className="flex items-start gap-3.5 relative z-10">
+                  <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center shrink-0 border border-white/20 text-[#83B9DF] shadow-xs">
+                    <Sparkles className="w-6 h-6 text-[#83B9DF] animate-pulse" />
                   </div>
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[10px] font-bold uppercase tracking-wider bg-white/20 px-2.5 py-0.5 rounded-lg text-[#D5D5D5]">
+                      <span className="text-[10px] font-bold uppercase tracking-wider bg-white/20 px-2.5 py-0.5 rounded-lg text-[#83B9DF]">
                         Simulasi Pra-Ujian
                       </span>
-                      <span className="text-xs text-zinc-300 font-medium">
+                      <span className="text-xs text-[#83B9DF] font-medium">
                         3 Soal KaTeX · Tanpa Mengurangi Nilai
                       </span>
                     </div>
@@ -804,9 +904,9 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowTrialModal(true)}
-                  className="px-5 py-3 rounded-2xl bg-white hover:bg-zinc-100 text-zinc-900 font-extrabold text-xs flex items-center justify-center gap-2 shrink-0 cursor-pointer shadow-sm hover:scale-[1.02] active:scale-[0.98] transition-all"
+                  className="px-5 py-3 rounded-2xl bg-[#83B9DF] hover:bg-[#9ec8e6] text-[#41454a] font-black text-xs flex items-center justify-center gap-2 shrink-0 cursor-pointer shadow-md hover:scale-[1.03] active:scale-[0.98] transition-all duration-200 relative z-10"
                 >
-                  <Play className="w-4 h-4 fill-zinc-900 text-zinc-900" />
+                  <Play className="w-4 h-4 fill-[#41454a] text-[#41454a]" />
                   <span>Mulai Uji Coba (3 Soal)</span>
                 </button>
               </div>
@@ -849,11 +949,11 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
             <div className="bg-[#fafafa] border border-[#D5D5D5] rounded-3xl p-6 sm:p-8 shadow-xs space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#D5D5D5]">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-2xl bg-[#646464] text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                  <div className="w-8 h-8 rounded-2xl bg-[#53585E] text-[#83B9DF] flex items-center justify-center font-bold text-xs shadow-xs border border-[#83B9DF]/30">
                     3
                   </div>
                   <div>
-                    <h2 className="text-lg font-bold text-zinc-900">
+                    <h2 className="text-lg font-bold text-[#53585E]">
                       Masuk Akun Peserta Ujian
                     </h2>
                     <p className="text-xs text-zinc-500">
@@ -868,10 +968,10 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                     <button
                       type="button"
                       onClick={() => setShowDemoModal(true)}
-                      className="px-3.5 py-1.5 bg-white hover:bg-zinc-100 border border-[#D5D5D5] rounded-2xl text-xs font-semibold text-zinc-800 cursor-pointer shadow-xs flex items-center gap-1.5 transition-colors"
+                      className="px-3.5 py-1.5 bg-white hover:bg-[#f7f7f8] border border-[#D5D5D5] hover:border-[#83B9DF] rounded-2xl text-xs font-semibold text-zinc-800 cursor-pointer shadow-xs flex items-center gap-1.5 transition-all duration-300 hover:-translate-y-0.5"
                       title="Pilih akun contoh pendaftar untuk uji coba cepat"
                     >
-                      <UserCheck className="w-3.5 h-3.5 text-[#646464]" />
+                      <UserCheck className="w-3.5 h-3.5 text-[#53585E]" />
                       <span>Pilih Akun Demo ({registeredList.length})</span>
                     </button>
                   </div>
@@ -947,7 +1047,7 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                   </p>
                 </div>
               ) : (
-                <form onSubmit={handleLoginAndStart} className="space-y-5 bg-white border border-[#D5D5D5] p-6 sm:p-7 rounded-3xl shadow-xs">
+                <form onSubmit={handleLoginAndStart} className="space-y-5 bg-white border border-[#D5D5D5] hover:border-[#83B9DF]/60 p-6 sm:p-7 rounded-3xl shadow-xs transition-all duration-300">
                   {/* Full Name Input */}
                   <div>
                     <label className="block text-xs font-bold text-zinc-800 mb-1.5">
@@ -963,7 +1063,7 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                         value={fullNameInput}
                         onChange={(e) => setFullNameInput(e.target.value)}
                         placeholder="Contoh: Alfa atau Budi Cahyono Nugroho"
-                        className="w-full bg-[#f7f7f8] border border-[#D5D5D5] rounded-2xl pl-10 pr-3.5 py-2.5 text-xs sm:text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-[#646464] focus:bg-white transition-colors"
+                        className="w-full bg-[#f7f7f8] border border-[#D5D5D5] focus:border-[#83B9DF] focus:ring-2 focus:ring-[#83B9DF]/30 focus:bg-white rounded-2xl pl-10 pr-3.5 py-2.5 text-xs sm:text-sm text-zinc-900 placeholder-zinc-400 transition-all duration-200"
                       />
                     </div>
                     <span className="text-[11px] text-zinc-500 mt-1 block">
@@ -986,7 +1086,7 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                         value={passwordInput}
                         onChange={(e) => setPasswordInput(e.target.value)}
                         placeholder="Masukkan nomor NISN Anda (sebagai kata sandi)"
-                        className="w-full bg-[#f7f7f8] border border-[#D5D5D5] rounded-2xl pl-10 pr-10 py-2.5 text-xs sm:text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-[#646464] focus:bg-white transition-colors"
+                        className="w-full bg-[#f7f7f8] border border-[#D5D5D5] focus:border-[#83B9DF] focus:ring-2 focus:ring-[#83B9DF]/30 focus:bg-white rounded-2xl pl-10 pr-10 py-2.5 text-xs sm:text-sm text-zinc-900 placeholder-zinc-400 transition-all duration-200"
                       />
                       <button
                         type="button"
@@ -1004,7 +1104,7 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                   {/* Quick Hint Card */}
                   <div className="p-3.5 bg-[#f7f7f8] border border-[#D5D5D5] rounded-2xl flex items-center justify-between gap-3 text-xs text-zinc-600">
                     <div className="flex items-center gap-2">
-                      <KeyRound className="w-4 h-4 text-[#646464] shrink-0" />
+                      <KeyRound className="w-4 h-4 text-[#53585E] shrink-0" />
                       <span>
                         Lupa NISN atau kesulitan masuk? Hubungi panitia atau gunakan akun contoh jika sedang uji coba.
                       </span>
@@ -1015,7 +1115,7 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                         setFullNameInput('Siti Aulia Maharani');
                         setPasswordInput('0069876543');
                       }}
-                      className="text-[11px] text-[#646464] hover:underline font-bold shrink-0 cursor-pointer"
+                      className="text-[11px] text-[#53585E] hover:text-[#41454a] hover:underline font-bold shrink-0 cursor-pointer"
                     >
                       Isi Contoh: Siti (SMA)
                     </button>
@@ -1026,7 +1126,7 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                     <button
                       type="button"
                       onClick={() => setCurrentStep(2)}
-                      className="w-full sm:w-auto px-4 py-2.5 bg-white hover:bg-zinc-100 border border-[#D5D5D5] text-zinc-800 font-semibold text-xs rounded-2xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                      className="w-full sm:w-auto px-4 py-2.5 bg-white hover:bg-[#f7f7f8] border border-[#D5D5D5] hover:border-[#83B9DF] text-zinc-800 font-semibold text-xs rounded-2xl transition-all duration-300 flex items-center justify-center gap-1.5 cursor-pointer shadow-xs hover:-translate-y-0.5"
                     >
                       <ArrowLeft className="w-4 h-4" />
                       <span>Kembali ke Pedoman</span>
@@ -1035,16 +1135,16 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                     <button
                       type="submit"
                       disabled={isLoggingIn}
-                      className="w-full sm:w-auto px-6 py-3 bg-[#646464] hover:bg-[#525252] disabled:opacity-60 text-white font-bold text-xs sm:text-sm rounded-2xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                      className="w-full sm:w-auto px-6 py-3 bg-[#53585E] hover:bg-[#41454a] disabled:opacity-60 text-white font-extrabold text-xs sm:text-sm rounded-2xl transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer shadow-sm hover:shadow-[0_8px_25px_rgba(131,185,223,0.38)] hover:-translate-y-0.5 border border-[#53585E]"
                     >
                       {isLoggingIn ? (
                         <>
-                          <RotateCcw className="w-4 h-4 text-white animate-spin" />
+                          <RotateCcw className="w-4 h-4 text-[#83B9DF] animate-spin" />
                           <span>Memverifikasi Akun ke Server...</span>
                         </>
                       ) : (
                         <>
-                          <ShieldCheck className="w-4 h-4 text-white" />
+                          <ShieldCheck className="w-4 h-4 text-[#83B9DF]" />
                           <span>Masuk ke Ruang Ujian</span>
                         </>
                       )}

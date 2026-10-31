@@ -135,6 +135,8 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
   // Master Exam Gate State (Controls whether participants can open the exam or stay in waiting room)
   const [isExamGateOpen, setIsExamGateOpen] = useState<boolean>(false);
   const [isTogglingGate, setIsTogglingGate] = useState<boolean>(false);
+  const [gateSource, setGateSource] = useState<'server' | 'cache' | 'local_override'>('server');
+  const [examPasscode, setExamPasscode] = useState<string>('MMO2027');
 
   useEffect(() => {
     let isMounted = true;
@@ -143,16 +145,25 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
         const res = await getExamGateStatusOnline();
         if (isMounted) {
           setIsExamGateOpen(res.isOpen);
+          if (res.source) setGateSource(res.source);
+          if (res.passcode) setExamPasscode(res.passcode);
         }
       } catch (err) {
         console.warn('Failed to load gate status:', err);
       }
     };
     fetchGate();
-    const interval = setInterval(fetchGate, 3000);
+    const interval = setInterval(fetchGate, 2500);
+
+    const handleGateEvent = () => {
+      fetchGate();
+    };
+    window.addEventListener('mmo_exam_gate_change', handleGateEvent);
+
     return () => {
       isMounted = false;
       clearInterval(interval);
+      window.removeEventListener('mmo_exam_gate_change', handleGateEvent);
     };
   }, []);
 
@@ -160,16 +171,27 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
     setIsTogglingGate(true);
     const targetStatus = !isExamGateOpen;
     try {
-      const res = await setExamGateStatusOnline(targetStatus);
-      setIsExamGateOpen(res);
+      const res = await setExamGateStatusOnline(targetStatus, examPasscode);
+      setIsExamGateOpen(res.isOpen);
+      if (res.source) setGateSource(res.source);
       setBroadcastNotice(
-        res
-          ? '🔓 Akses soal ujian resmi DIBUKA! Peserta di Ruang Tunggu akan otomatis mulai mengerjakan soal.'
+        res.isOpen
+          ? (res.source === 'server'
+              ? '🔓 Akses soal ujian resmi DIBUKA (Vercel Serverless Aktif)! Peserta di Ruang Tunggu otomatis mulai mengerjakan soal.'
+              : '🔓 Akses soal ujian resmi DIBUKA (Sinkronisasi Cepat/Lokal)! Peserta di Ruang Tunggu dapat mulai mengerjakan soal.')
           : '🔒 Akses soal ujian resmi DIKUNCI! Peserta yang baru login akan tertahan di Ruang Tunggu.'
       );
-      setTimeout(() => setBroadcastNotice(null), 5000);
+      setTimeout(() => setBroadcastNotice(null), 6000);
     } catch (err) {
       console.warn('Error toggling exam gate:', err);
+      setIsExamGateOpen(targetStatus);
+      setGateSource('local_override');
+      setBroadcastNotice(
+        targetStatus
+          ? '🔓 Akses soal DIBUKA melalui Mode Cadangan Cepat! Gunakan Kode Akses MMO2027 jika ada peserta mengalami kendala.'
+          : '🔒 Akses soal ujian resmi DIKUNCI!'
+      );
+      setTimeout(() => setBroadcastNotice(null), 6000);
     } finally {
       setIsTogglingGate(false);
     }
@@ -1137,7 +1159,7 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
             {isExamGateOpen ? <Unlock className="w-6 h-6" /> : <Lock className="w-6 h-6" />}
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span
                 className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-lg border ${
                   isExamGateOpen
@@ -1147,11 +1169,15 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
               >
                 {isExamGateOpen ? '● Akses Soal: DIBUKA' : '● Akses Soal: TERKUNCI (Ruang Tunggu)'}
               </span>
-              <span className="text-[11px] text-zinc-500 font-mono">
-                Kontrol Terpusat Server
+              <span className="text-[10px] text-zinc-600 bg-white/80 border border-[#D5D5D5] px-2 py-0.5 rounded-lg font-mono">
+                {gateSource === 'server' ? '🌐 Vercel Serverless Sync' : '⚡ Local Resilient Cache'}
+              </span>
+              <span className="text-[10px] text-zinc-600 bg-white/80 border border-[#D5D5D5] px-2 py-0.5 rounded-lg flex items-center gap-1 font-mono">
+                <span>Kode Darurat:</span>
+                <strong className="text-zinc-900">{examPasscode}</strong>
               </span>
             </div>
-            <h3 className="text-base sm:text-lg font-extrabold text-zinc-900 mt-0.5">
+            <h3 className="text-base sm:text-lg font-extrabold text-zinc-900 mt-1">
               {isExamGateOpen
                 ? 'Ujian Sedang Berlangsung — Akses Soal Terbuka'
                 : 'Peserta Tertahan di Ruang Tunggu Ujian'}
@@ -1164,12 +1190,12 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0 self-start md:self-center">
+        <div className="flex flex-wrap items-center gap-2 shrink-0 self-start md:self-center">
           <button
             type="button"
             onClick={handleToggleExamGate}
             disabled={isTogglingGate}
-            className={`px-6 py-3 rounded-2xl font-bold text-xs sm:text-sm text-white transition-all cursor-pointer shadow-sm flex items-center gap-2 ${
+            className={`px-5 py-3 rounded-2xl font-bold text-xs sm:text-sm text-white transition-all cursor-pointer shadow-sm flex items-center gap-2 ${
               isExamGateOpen
                 ? 'bg-amber-600 hover:bg-amber-700'
                 : 'bg-emerald-600 hover:bg-emerald-700'
@@ -1178,7 +1204,7 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
             {isTogglingGate ? (
               <>
                 <RotateCcw className="w-4 h-4 animate-spin" />
-                <span>Memproses...</span>
+                <span>Menghubungi Server...</span>
               </>
             ) : isExamGateOpen ? (
               <>

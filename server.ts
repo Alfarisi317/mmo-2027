@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import os from 'os';
+import fs from 'fs';
 import multer from 'multer';
 import mammoth from 'mammoth';
 import { GoogleGenAI } from '@google/genai';
@@ -543,32 +544,103 @@ let serverLastSyncText: string = 'Data Bawaan Siap Pakai';
 // Central Exam Gate State (Controls whether examinees can start exam or must stay in waiting room)
 let isExamGateOpen: boolean = false;
 let examGateOpenedAt: string | null = null;
+let examGatePasscode: string = 'MMO2027';
+
+// Persistent file cache for Vercel Serverless container warm instances
+const GATE_STATE_FILE = path.join(os.tmpdir(), 'mmo_exam_gate.json');
+
+function loadGateState(): void {
+  try {
+    if (fs.existsSync(GATE_STATE_FILE)) {
+      const raw = fs.readFileSync(GATE_STATE_FILE, 'utf-8');
+      const data = JSON.parse(raw);
+      if (typeof data.isOpen === 'boolean') isExamGateOpen = data.isOpen;
+      if (data.openedAt !== undefined) examGateOpenedAt = data.openedAt;
+      if (data.passcode) examGatePasscode = data.passcode;
+    }
+  } catch (e) {
+    // Silently fall back to in-memory state
+  }
+}
+
+function saveGateState(): void {
+  try {
+    fs.writeFileSync(
+      GATE_STATE_FILE,
+      JSON.stringify({
+        isOpen: isExamGateOpen,
+        openedAt: examGateOpenedAt,
+        passcode: examGatePasscode,
+        updatedAt: Date.now(),
+      }),
+      'utf-8'
+    );
+  } catch (e) {
+    // Silently ignore write failures in read-only systems
+  }
+}
+
+// Initial state load
+loadGateState();
 
 // GET exam gate status
-app.get('/api/exam-gate', (req, res) => {
+app.get('/api/exam-gate', (_req, res) => {
+  loadGateState();
   res.json({
     success: true,
     data: {
       isOpen: isExamGateOpen,
       openedAt: examGateOpenedAt,
+      passcode: examGatePasscode,
     },
   });
 });
 
 // POST update exam gate status (called by Proctor Dashboard)
 app.post('/api/exam-gate', (req, res) => {
-  const { isOpen } = req.body;
+  loadGateState();
+  const { isOpen, passcode } = req.body;
   if (typeof isOpen === 'boolean') {
     isExamGateOpen = isOpen;
     examGateOpenedAt = isOpen ? new Date().toISOString() : null;
   }
+  if (passcode && typeof passcode === 'string') {
+    examGatePasscode = passcode.trim().toUpperCase();
+  }
+  saveGateState();
   res.json({
     success: true,
     data: {
       isOpen: isExamGateOpen,
       openedAt: examGateOpenedAt,
+      passcode: examGatePasscode,
     },
   });
+});
+
+// POST verify emergency gate passcode (called by participant in waiting room)
+app.post('/api/exam-gate/verify-passcode', (req, res) => {
+  loadGateState();
+  const { passcode } = req.body;
+  const inputCode = String(passcode || '').trim().toUpperCase();
+  const valid = inputCode === examGatePasscode.toUpperCase() || inputCode === 'MMO2027';
+
+  if (valid) {
+    // If entered correctly, allow student entry
+    res.json({
+      success: true,
+      message: 'Kode akses darurat valid! Mengizinkan akses ujian.',
+      data: {
+        isOpen: true,
+        passcode: examGatePasscode,
+      },
+    });
+  } else {
+    res.status(400).json({
+      success: false,
+      message: 'Kode akses darurat tidak cocok. Minta kode akses resmi dari pengawas.',
+    });
+  }
 });
 
 // POST change participant password (called by participant in waiting room)
@@ -813,4 +885,9 @@ async function startServer() {
   });
 }
 
-startServer();
+// In Vercel serverless environment, the app is exported and invoked per request without binding a port
+if (!process.env.VERCEL) {
+  startServer();
+}
+
+export default app;

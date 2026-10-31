@@ -9,10 +9,7 @@ import {
   RotateCcw,
   PenTool,
   Check,
-  HelpCircle,
-  Award,
   BookOpen,
-  RefreshCw,
   LogOut,
 } from 'lucide-react';
 import { Question, UserAnswer } from '../types';
@@ -97,20 +94,20 @@ export const TrialExamModal: React.FC<TrialExamModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-      <div className="bg-[#fafafa] border border-[#D5D5D5] rounded-3xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden my-auto animate-in zoom-in-95 duration-150">
+      <div className="bg-[#fafafa] border border-[#D5D5D5] rounded-3xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden my-auto animate-in zoom-in-95 duration-200">
         
-        {/* Header */}
-        <div className="bg-[#646464] text-white px-5 py-4 flex items-center justify-between border-b border-[#525252] shrink-0">
+        {/* Header with Iron Gate #53585E and Sky Blue #83B9DF */}
+        <div className="bg-[#53585E] text-white px-5 py-4 flex items-center justify-between border-b border-[#41454a] shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-2xl bg-white/10 flex items-center justify-center text-[#D5D5D5] border border-white/20">
-              <Sparkles className="w-5 h-5 text-white" />
+            <div className="w-9 h-9 rounded-2xl bg-white/10 flex items-center justify-center text-[#83B9DF] border border-white/20 shadow-xs">
+              <Sparkles className="w-5 h-5 text-[#83B9DF] animate-pulse" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-lg text-white">
+                <span className="text-[10px] font-bold uppercase tracking-wider bg-[#83B9DF]/20 px-2.5 py-0.5 rounded-lg text-[#83B9DF] border border-[#83B9DF]/30">
                   Simulasi Mandiri · 3 Soal
                 </span>
-                <span className="text-xs text-[#D5D5D5]">
+                <span className="text-xs text-[#83B9DF]">
                   Jenjang {category} · {participantName}
                 </span>
               </div>
@@ -131,14 +128,14 @@ export const TrialExamModal: React.FC<TrialExamModalProps> = ({
 
         {/* Status Notification if gate has been opened */}
         {isGateOpen && (
-          <div className="bg-emerald-600 text-white px-4 py-2 text-xs flex items-center justify-between gap-2 shrink-0">
+          <div className="bg-emerald-600 text-white px-4 py-2 text-xs flex items-center justify-between gap-2 shrink-0 animate-in fade-in">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
               <span>Akses Soal Resmi Telah Dibuka Panitia! Anda bisa segera masuk ke ujian utama.</span>
             </div>
             <button
               onClick={onClose}
-              className="px-2.5 py-1 bg-white text-emerald-800 font-bold rounded-lg text-[11px] hover:bg-emerald-50 cursor-pointer"
+              className="px-2.5 py-1 bg-white text-emerald-800 font-bold rounded-lg text-[11px] hover:bg-emerald-50 cursor-pointer shadow-xs"
             >
               Masuk Ujian Resmi →
             </button>
@@ -150,9 +147,9 @@ export const TrialExamModal: React.FC<TrialExamModalProps> = ({
           {!showSummary ? (
             <>
               {/* Top Sub-Bar: Question switcher pills & scratchpad trigger */}
-              <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-[#D5D5D5] rounded-2xl p-3 shadow-2xs">
+              <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-[#D5D5D5] rounded-2xl p-3 shadow-xs">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider mr-1">
+                  <span className="text-xs font-bold text-[#53585E] uppercase tracking-wider mr-1">
                     Nomor Soal:
                   </span>
                   {questions.map((q, idx) => {
@@ -165,14 +162,14 @@ export const TrialExamModal: React.FC<TrialExamModalProps> = ({
                       <button
                         key={q.id}
                         onClick={() => setCurrentIndex(idx)}
-                        className={`w-9 h-9 rounded-xl font-mono font-bold text-xs flex items-center justify-center transition-all cursor-pointer ${
+                        className={`w-9 h-9 rounded-xl font-mono font-bold text-xs flex items-center justify-center transition-all duration-200 cursor-pointer ${
                           isCurr
-                            ? 'ring-2 ring-[#646464] ring-offset-1 bg-[#646464] text-white shadow-xs'
+                            ? 'ring-2 ring-[#83B9DF] bg-[#53585E] text-white shadow-sm -translate-y-0.5'
                             : isDbt
                             ? 'bg-amber-100 border border-amber-300 text-amber-900'
                             : isAns
-                            ? 'bg-zinc-800 text-white'
-                            : 'bg-zinc-100 border border-[#D5D5D5] text-zinc-700 hover:bg-zinc-200'
+                            ? 'bg-[#53585E]/80 text-white'
+                            : 'bg-[#f7f7f8] border border-[#D5D5D5] text-[#53585E] hover:border-[#83B9DF] hover:bg-[#83B9DF]/10'
                         }`}
                       >
                         {idx + 1}
@@ -184,39 +181,39 @@ export const TrialExamModal: React.FC<TrialExamModalProps> = ({
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setIsScratchpadOpen(true)}
-                    className="px-3 py-1.5 rounded-xl bg-[#f7f7f8] hover:bg-zinc-200 border border-[#D5D5D5] text-xs font-semibold text-zinc-800 flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
+                    className="px-3.5 py-1.5 rounded-xl bg-white hover:bg-[#f7f7f8] border border-[#D5D5D5] hover:border-[#83B9DF] text-xs font-semibold text-[#53585E] flex items-center gap-1.5 cursor-pointer shadow-xs hover:-translate-y-0.5 transition-all duration-200"
                   >
-                    <PenTool className="w-3.5 h-3.5 text-[#646464]" />
+                    <PenTool className="w-3.5 h-3.5 text-[#53585E]" />
                     <span>Coretan Rumus</span>
                   </button>
 
                   <button
                     onClick={() => setShowSummary(true)}
-                    className="px-3.5 py-1.5 rounded-xl bg-[#646464] hover:bg-[#525252] text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                    className="px-3.5 py-1.5 rounded-xl bg-[#53585E] hover:bg-[#41454a] text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-sm hover:shadow-[0_6px_16px_rgba(131,185,223,0.35)] hover:-translate-y-0.5 transition-all duration-200 border border-[#53585E]"
                   >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <CheckCircle2 className="w-3.5 h-3.5 text-[#83B9DF]" />
                     <span>Selesai Uji Coba</span>
                   </button>
                 </div>
               </div>
 
               {/* Question Card */}
-              <div className="bg-white border border-[#D5D5D5] rounded-3xl p-5 sm:p-7 shadow-xs space-y-6">
+              <div className="bg-white border border-[#D5D5D5] rounded-3xl p-5 sm:p-7 shadow-xs space-y-6 transition-all duration-300 hover:border-[#83B9DF]/60">
                 <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[#D5D5D5]">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-extrabold text-zinc-900">
+                    <span className="text-sm font-extrabold text-[#53585E]">
                       Soal Nomor {currentIndex + 1} dari {questions.length}
                     </span>
                     <span className="text-zinc-300">·</span>
-                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded-lg bg-[#f7f7f8] border border-[#D5D5D5] text-zinc-700">
+                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded-lg bg-[#83B9DF]/15 border border-[#83B9DF]/40 text-[#53585E]">
                       {currentQ.domain}
                     </span>
-                    <span className="text-xs font-bold px-2.5 py-0.5 rounded-lg bg-zinc-800 text-white">
+                    <span className="text-xs font-bold px-2.5 py-0.5 rounded-lg bg-[#53585E] text-[#83B9DF]">
                       Fokus: {currentQ.focus}
                     </span>
                   </div>
 
-                  <span className="text-[11px] font-mono text-zinc-500 bg-zinc-100 px-2 py-0.5 rounded-md">
+                  <span className="text-[11px] font-mono text-zinc-500 bg-[#f7f7f8] border border-[#D5D5D5] px-2 py-0.5 rounded-md">
                     Format: Pilihan Ganda (A-E)
                   </span>
                 </div>
@@ -226,7 +223,7 @@ export const TrialExamModal: React.FC<TrialExamModalProps> = ({
                   <MathRenderer content={currentQ.text} />
                 </div>
 
-                {/* Options List */}
+                {/* Options List with Sky Blue selection and Iron Gate structure */}
                 <div className="space-y-3 pt-2">
                   {currentQ.options?.map((opt) => {
                     const isSelected = selectedValue === opt.id;
@@ -235,20 +232,20 @@ export const TrialExamModal: React.FC<TrialExamModalProps> = ({
                       <button
                         key={opt.id}
                         onClick={() => handleSelectOption(opt.id)}
-                        className={`w-full text-left p-3.5 sm:p-4 rounded-2xl border-2 transition-all flex items-start gap-3.5 cursor-pointer select-none group ${
+                        className={`w-full text-left p-3.5 sm:p-4 rounded-2xl border-2 transition-all duration-200 flex items-start gap-3.5 cursor-pointer select-none group ${
                           isSelected
-                            ? 'bg-[#27272a] border-[#27272a] text-white shadow-md'
-                            : 'bg-white border-[#D5D5D5] text-zinc-900 hover:bg-[#f7f7f8] hover:border-[#646464] shadow-2xs'
+                            ? 'bg-[#53585E] border-[#53585E] text-white shadow-md shadow-[#83B9DF]/20 -translate-y-0.5'
+                            : 'bg-white border-[#D5D5D5] text-zinc-900 hover:bg-[#83B9DF]/5 hover:border-[#83B9DF] hover:shadow-xs'
                         }`}
                       >
                         <div
                           className={`w-8 h-8 rounded-xl flex items-center justify-center font-mono font-bold text-xs shrink-0 transition-colors ${
                             isSelected
-                              ? 'bg-zinc-800 text-white border border-zinc-700'
-                              : 'bg-zinc-100 border border-[#D5D5D5] text-zinc-800 group-hover:bg-[#D5D5D5]/50'
+                              ? 'bg-[#83B9DF] text-[#41454a]'
+                              : 'bg-[#f7f7f8] border border-[#D5D5D5] text-[#53585E] group-hover:border-[#83B9DF] group-hover:bg-[#83B9DF]/20'
                           }`}
                         >
-                          {isSelected ? <Check className="w-4 h-4 text-white stroke-[3]" /> : opt.id}
+                          {isSelected ? <Check className="w-4 h-4 text-[#41454a] stroke-[3]" /> : opt.id}
                         </div>
                         <div
                           className={`flex-1 pt-1 text-sm sm:text-base leading-relaxed overflow-x-auto ${
@@ -271,7 +268,7 @@ export const TrialExamModal: React.FC<TrialExamModalProps> = ({
                     <button
                       onClick={() => setCurrentIndex((prev) => Math.max(0, prev - 1))}
                       disabled={currentIndex === 0}
-                      className="px-3.5 py-2 rounded-xl border border-[#D5D5D5] bg-[#f7f7f8] hover:bg-zinc-200 disabled:opacity-40 text-xs font-semibold text-zinc-800 flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                      className="px-3.5 py-2 rounded-xl border border-[#D5D5D5] bg-white hover:bg-[#f7f7f8] hover:border-[#83B9DF] disabled:opacity-40 text-xs font-semibold text-[#53585E] flex items-center gap-1.5 cursor-pointer shadow-xs transition-all duration-200"
                     >
                       <ArrowLeft className="w-4 h-4" />
                       <span>Sebelumnya</span>
@@ -280,7 +277,7 @@ export const TrialExamModal: React.FC<TrialExamModalProps> = ({
                     <button
                       onClick={() => setCurrentIndex((prev) => Math.min(questions.length - 1, prev + 1))}
                       disabled={currentIndex === questions.length - 1}
-                      className="px-3.5 py-2 rounded-xl border border-[#D5D5D5] bg-[#f7f7f8] hover:bg-zinc-200 disabled:opacity-40 text-xs font-semibold text-zinc-800 flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                      className="px-3.5 py-2 rounded-xl border border-[#D5D5D5] bg-white hover:bg-[#f7f7f8] hover:border-[#83B9DF] disabled:opacity-40 text-xs font-semibold text-[#53585E] flex items-center gap-1.5 cursor-pointer shadow-xs transition-all duration-200"
                     >
                       <span>Selanjutnya</span>
                       <ArrowRight className="w-4 h-4" />
@@ -291,7 +288,7 @@ export const TrialExamModal: React.FC<TrialExamModalProps> = ({
                     {selectedValue && (
                       <button
                         onClick={handleClearAnswer}
-                        className="px-3 py-2 rounded-xl hover:bg-zinc-100 text-xs font-medium text-zinc-500 hover:text-zinc-800 flex items-center gap-1 cursor-pointer"
+                        className="px-3 py-2 rounded-xl hover:bg-zinc-100 text-xs font-medium text-zinc-500 hover:text-zinc-800 flex items-center gap-1 cursor-pointer transition-colors"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
                         <span>Hapus Pilihan</span>
@@ -300,10 +297,10 @@ export const TrialExamModal: React.FC<TrialExamModalProps> = ({
 
                     <button
                       onClick={handleToggleDoubtful}
-                      className={`px-3.5 py-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors ${
+                      className={`px-3.5 py-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs transition-all duration-200 ${
                         isDoubtful
                           ? 'bg-amber-50 border-amber-300 text-amber-800'
-                          : 'bg-white border-[#D5D5D5] text-zinc-700 hover:border-amber-400'
+                          : 'bg-white border-[#D5D5D5] text-[#53585E] hover:border-amber-400'
                       }`}
                     >
                       <Bookmark className={`w-3.5 h-3.5 ${isDoubtful ? 'fill-amber-500 text-amber-500' : ''}`} />
@@ -326,7 +323,7 @@ export const TrialExamModal: React.FC<TrialExamModalProps> = ({
                 <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-200">
                   Simulasi Selesai & Berhasil
                 </span>
-                <h3 className="text-xl sm:text-2xl font-extrabold text-zinc-900 mt-2">
+                <h3 className="text-xl sm:text-2xl font-extrabold text-[#53585E] mt-2">
                   Anda Telah Mencoba Format Soal MMO 2027!
                 </h3>
                 <p className="text-xs sm:text-sm text-zinc-600 max-w-lg mx-auto mt-2 leading-relaxed">
@@ -338,7 +335,7 @@ export const TrialExamModal: React.FC<TrialExamModalProps> = ({
               <div className="grid grid-cols-3 gap-3 max-w-md mx-auto bg-[#f7f7f8] border border-[#D5D5D5] rounded-2xl p-4">
                 <div>
                   <span className="text-xs text-zinc-500 block">Total Soal</span>
-                  <span className="text-lg font-mono font-bold text-zinc-900">{questions.length}</span>
+                  <span className="text-lg font-mono font-bold text-[#53585E]">{questions.length}</span>
                 </div>
                 <div>
                   <span className="text-xs text-zinc-500 block">Terjawab</span>
@@ -355,9 +352,9 @@ export const TrialExamModal: React.FC<TrialExamModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowExplanations(!showExplanations)}
-                  className="px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 border border-[#D5D5D5] rounded-2xl text-xs font-semibold flex items-center justify-center gap-2 mx-auto cursor-pointer transition-colors shadow-2xs"
+                  className="px-4 py-2 bg-white hover:bg-[#f7f7f8] text-[#53585E] border border-[#D5D5D5] hover:border-[#83B9DF] rounded-2xl text-xs font-semibold flex items-center justify-center gap-2 mx-auto cursor-pointer transition-all duration-200 shadow-xs hover:-translate-y-0.5"
                 >
-                  <BookOpen className="w-4 h-4 text-[#646464]" />
+                  <BookOpen className="w-4 h-4 text-[#83B9DF]" />
                   <span>{showExplanations ? 'Sembunyikan Kunci & Pembahasan' : 'Lihat Kunci & Pembahasan 3 Soal Ini'}</span>
                 </button>
 
@@ -370,7 +367,7 @@ export const TrialExamModal: React.FC<TrialExamModalProps> = ({
                       return (
                         <div key={q.id} className="p-4 rounded-2xl border border-[#D5D5D5] bg-[#fafafa] space-y-2">
                           <div className="flex items-center justify-between text-xs">
-                            <span className="font-bold text-zinc-900">
+                            <span className="font-bold text-[#53585E]">
                               Nomor {idx + 1} ({q.domain})
                             </span>
                             <span
@@ -400,27 +397,27 @@ export const TrialExamModal: React.FC<TrialExamModalProps> = ({
                 <button
                   type="button"
                   onClick={handleResetTrial}
-                  className="px-4 py-2.5 rounded-2xl bg-white hover:bg-zinc-100 border border-[#D5D5D5] text-zinc-800 text-xs font-semibold flex items-center gap-2 cursor-pointer shadow-xs"
+                  className="px-4 py-2.5 rounded-2xl bg-white hover:bg-[#f7f7f8] border border-[#D5D5D5] hover:border-[#83B9DF] text-[#53585E] text-xs font-semibold flex items-center gap-2 cursor-pointer shadow-xs hover:-translate-y-0.5 transition-all duration-200"
                 >
-                  <RotateCcw className="w-4 h-4 text-[#646464]" />
+                  <RotateCcw className="w-4 h-4 text-[#83B9DF]" />
                   <span>Ulangi Simulasi</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setShowSummary(false)}
-                  className="px-4 py-2.5 rounded-2xl bg-zinc-100 hover:bg-zinc-200 border border-[#D5D5D5] text-zinc-800 text-xs font-semibold flex items-center gap-2 cursor-pointer shadow-xs"
+                  className="px-4 py-2.5 rounded-2xl bg-[#f7f7f8] hover:bg-zinc-200 border border-[#D5D5D5] text-[#53585E] text-xs font-semibold flex items-center gap-2 cursor-pointer shadow-xs transition-all duration-200"
                 >
-                  <ArrowLeft className="w-4 h-4" />
+                  <ArrowLeft className="w-4 h-4 text-[#53585E]" />
                   <span>Periksa Lembar Soal</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-5 py-2.5 rounded-2xl bg-[#646464] hover:bg-[#525252] text-white text-xs font-bold flex items-center gap-2 cursor-pointer shadow-xs"
+                  className="px-5 py-2.5 rounded-2xl bg-[#53585E] hover:bg-[#41454a] text-white text-xs font-bold flex items-center gap-2 cursor-pointer shadow-sm hover:shadow-[0_6px_20px_rgba(131,185,223,0.35)] hover:-translate-y-0.5 transition-all duration-200 border border-[#53585E]"
                 >
-                  <LogOut className="w-4 h-4" />
+                  <LogOut className="w-4 h-4 text-[#83B9DF]" />
                   <span>Kembali ke Ruang Tunggu</span>
                 </button>
               </div>
@@ -446,7 +443,7 @@ export const TrialExamModal: React.FC<TrialExamModalProps> = ({
               <button
                 type="button"
                 onClick={() => setShowSummary(true)}
-                className="px-4 py-2 rounded-2xl bg-[#646464] hover:bg-[#525252] text-white text-xs font-bold cursor-pointer shadow-xs"
+                className="px-4 py-2 rounded-2xl bg-[#53585E] hover:bg-[#41454a] text-white text-xs font-bold cursor-pointer shadow-sm hover:shadow-[0_6px_20px_rgba(131,185,223,0.35)] hover:-translate-y-0.5 transition-all duration-200 border border-[#53585E]"
               >
                 Selesai Uji Coba
               </button>
