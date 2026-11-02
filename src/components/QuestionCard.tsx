@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, ArrowRight, Bookmark, RotateCcw, PenTool, Check, Sparkles, BookOpen, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Bookmark, RotateCcw, Check, BookOpen, CheckCircle2 } from 'lucide-react';
 import { Question, UserAnswer } from '../types';
 import { MathRenderer } from './MathRenderer';
 
@@ -13,7 +13,6 @@ interface QuestionCardProps {
   onClearAnswer: () => void;
   onPrev: () => void;
   onNext: () => void;
-  onOpenScratchpad: () => void;
   onSubmitExam?: () => void;
   isFirst: boolean;
   isLast: boolean;
@@ -29,7 +28,6 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   onClearAnswer,
   onPrev,
   onNext,
-  onOpenScratchpad,
   onSubmitExam,
   isFirst,
   isLast,
@@ -42,7 +40,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   return (
     <div className="bg-white border border-[#D5D5D5] rounded-3xl p-5 sm:p-7 lg:p-8 shadow-xs flex flex-col justify-between min-h-[580px] transition-all">
       <div>
-        {/* Header Metadata */}
+        {/* Header Metadata: Hanya Nomor Soal, Domain Matematika, dan Bobot Poin */}
         <div className="flex flex-wrap items-center justify-between gap-3 pb-4 mb-6 border-b border-[#D5D5D5]">
           <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-600">
             <span className="font-bold text-zinc-900 text-sm">
@@ -52,29 +50,10 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
             <span className="bg-[#f7f7f8] border border-[#D5D5D5] text-zinc-800 font-semibold px-2.5 py-0.5 rounded-xl">
               {question.domain}
             </span>
-            {question.stage && (
-              <>
-                <span aria-hidden="true" className="text-zinc-300">·</span>
-                <span className="bg-[#646464] text-white font-bold px-2.5 py-0.5 rounded-xl flex items-center gap-1 shadow-2xs">
-                  <Sparkles className="w-3 h-3 text-white" />
-                  Babak {question.stage} ({question.focus || 'Explore'})
-                </span>
-              </>
-            )}
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={onOpenScratchpad}
-              className="px-3 py-1.5 rounded-xl bg-[#f7f7f8] hover:bg-[#D5D5D5]/50 border border-[#D5D5D5] text-xs font-medium text-zinc-800 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-              title="Buka kanvas coretan rumus matematika"
-            >
-              <PenTool className="w-3.5 h-3.5 text-[#646464]" />
-              <span className="hidden sm:inline">Coretan Rumus</span>
-              <span className="sm:hidden">Coretan</span>
-            </button>
-
-            <div className="text-[11px] font-mono font-semibold text-zinc-700 px-2.5 py-1 bg-[#f7f7f8] border border-[#D5D5D5] rounded-xl">
+            <div className="text-[11px] font-mono font-semibold text-zinc-700 px-2.5 py-1 bg-[#f7f7f8] border border-[#D5D5D5] rounded-xl" title="Bobot penskoran resmi">
               {isShortAnswer ? '+10 / 0' : '+4 / -1 / 0'}
             </div>
           </div>
@@ -132,12 +111,12 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
           </div>
         )}
 
-        {/* Short Answer / Problem Solving Input (Babak Final: Think + Excel) */}
+        {/* Short Answer / Problem Solving Input */}
         {isShortAnswer && (
           <div className="space-y-4 mb-8 bg-[#fafafa] border border-[#D5D5D5] rounded-3xl p-4 sm:p-6 shadow-2xs">
             <div className="flex items-center gap-2 text-xs font-bold text-zinc-800">
               <BookOpen className="w-4 h-4 text-[#646464]" />
-              <span>Lembar Uraian & Problem Solving (Babak Final)</span>
+              <span>Lembar Uraian & Problem Solving</span>
             </div>
 
             <div>
@@ -167,7 +146,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
             </div>
 
             <div className="text-[11px] text-zinc-500 flex items-center justify-between">
-              <span>Gunakan kanvas coretan di atas jika membutuhkan sketsa grafik/geometri.</span>
+              <span>Tuliskan jawaban singkat dan langkah penalaran secara sistematis.</span>
               <span className="font-mono text-zinc-700">
                 {selectedValue.trim() ? 'Jawaban Terisi' : 'Belum diisi'}
               </span>

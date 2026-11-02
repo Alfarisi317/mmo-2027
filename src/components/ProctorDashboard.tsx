@@ -73,6 +73,7 @@ import {
   fetchRegisteredParticipantsFromServer,
   getExamGateStatusOnline,
   setExamGateStatusOnline,
+  ExamGateMatrix,
 } from '../services/registeredParticipants';
 
 interface ProctorDashboardProps {
@@ -135,9 +136,16 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
   // Default is EMPTY so no random mock names appear, only real HP examinees
   const [participants, setParticipants] = useState<LiveParticipantMonitoring[]>([]);
 
-  // Master Exam Gate State (Controls whether participants can open the exam or stay in waiting room)
+  // Master Exam Gate State & 4-Gate Matrix (SMP/SMA x Penyisihan/Semifinal)
   const [isExamGateOpen, setIsExamGateOpen] = useState<boolean>(false);
+  const [gateMatrix, setGateMatrix] = useState<ExamGateMatrix>({
+    'SMP_Penyisihan': false,
+    'SMP_Semifinal': false,
+    'SMA_Penyisihan': false,
+    'SMA_Semifinal': false,
+  });
   const [isTogglingGate, setIsTogglingGate] = useState<boolean>(false);
+  const [togglingKey, setTogglingKey] = useState<string | null>(null);
   const [gateSource, setGateSource] = useState<'server' | 'cache' | 'local_override'>('server');
   const [examPasscode, setExamPasscode] = useState<string>('MMO2027');
 
@@ -150,6 +158,9 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
           setIsExamGateOpen(res.isOpen);
           if (res.source) setGateSource(res.source);
           if (res.passcode) setExamPasscode(res.passcode);
+          if (res.gateMatrix) {
+            setGateMatrix(res.gateMatrix);
+          }
         }
       } catch (err) {
         console.warn('Failed to load gate status:', err);
@@ -170,31 +181,84 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
     };
   }, []);
 
-  const handleToggleExamGate = async () => {
-    setIsTogglingGate(true);
-    const targetStatus = !isExamGateOpen;
+  const handleToggleSpecificGate = async (key: keyof ExamGateMatrix) => {
+    setTogglingKey(key);
+    const targetStatus = !gateMatrix[key];
+    const category = key.startsWith('SMP') ? 'SMP' : 'SMA';
+    const stage = key.endsWith('Penyisihan') ? 'Penyisihan' : 'Semifinal';
     try {
-      const res = await setExamGateStatusOnline(targetStatus, examPasscode);
+      const res = await setExamGateStatusOnline(targetStatus, examPasscode, {
+        gateKey: key,
+        gateValue: targetStatus,
+      });
       setIsExamGateOpen(res.isOpen);
+      setGateMatrix(res.gateMatrix);
       if (res.source) setGateSource(res.source);
       setBroadcastNotice(
-        res.isOpen
-          ? (res.source === 'server'
-              ? '🔓 Akses soal ujian resmi DIBUKA (Vercel Serverless Aktif)! Peserta di Ruang Tunggu otomatis mulai mengerjakan soal.'
-              : '🔓 Akses soal ujian resmi DIBUKA (Sinkronisasi Cepat/Lokal)! Peserta di Ruang Tunggu dapat mulai mengerjakan soal.')
-          : '🔒 Akses soal ujian resmi DIKUNCI! Peserta yang baru login akan tertahan di Ruang Tunggu.'
+        targetStatus
+          ? `🔓 Akses Soal ${category} · Babak ${stage} resmi DIBUKA! Peserta yang memilih ${category} ${stage} dapat langsung mengerjakan.`
+          : `🔒 Akses Soal ${category} · Babak ${stage} DIKUNCI! Peserta ${category} ${stage} akan tertahan di Ruang Tunggu.`
       );
-      setTimeout(() => setBroadcastNotice(null), 6000);
+      setTimeout(() => setBroadcastNotice(null), 5000);
     } catch (err) {
-      console.warn('Error toggling exam gate:', err);
-      setIsExamGateOpen(targetStatus);
-      setGateSource('local_override');
+      console.warn('Error toggling specific gate:', err);
+      setGateMatrix((prev) => ({ ...prev, [key]: targetStatus }));
       setBroadcastNotice(
         targetStatus
-          ? '🔓 Akses soal DIBUKA melalui Mode Cadangan Cepat! Gunakan Kode Akses MMO2027 jika ada peserta mengalami kendala.'
-          : '🔒 Akses soal ujian resmi DIKUNCI!'
+          ? `🔓 Akses Soal ${category} · Babak ${stage} DIBUKA (Mode Cadangan Lokal).`
+          : `🔒 Akses Soal ${category} · Babak ${stage} DIKUNCI.`
       );
-      setTimeout(() => setBroadcastNotice(null), 6000);
+      setTimeout(() => setBroadcastNotice(null), 5000);
+    } finally {
+      setTogglingKey(null);
+    }
+  };
+
+  const handleOpenAllGates = async () => {
+    setIsTogglingGate(true);
+    try {
+      const res = await setExamGateStatusOnline(true, examPasscode, { applyAll: true });
+      setIsExamGateOpen(true);
+      setGateMatrix(res.gateMatrix);
+      if (res.source) setGateSource(res.source);
+      setBroadcastNotice('🔓 SEMUA AKSES SOAL (SMP & SMA — Penyisihan & Semifinal) resmi DIBUKA!');
+      setTimeout(() => setBroadcastNotice(null), 5000);
+    } catch (err) {
+      console.warn('Error opening all gates:', err);
+      setIsExamGateOpen(true);
+      setGateMatrix({
+        'SMP_Penyisihan': true,
+        'SMP_Semifinal': true,
+        'SMA_Penyisihan': true,
+        'SMA_Semifinal': true,
+      });
+      setBroadcastNotice('🔓 SEMUA AKSES SOAL resmi DIBUKA (Mode Cadangan Lokal).');
+      setTimeout(() => setBroadcastNotice(null), 5000);
+    } finally {
+      setIsTogglingGate(false);
+    }
+  };
+
+  const handleLockAllGates = async () => {
+    setIsTogglingGate(true);
+    try {
+      const res = await setExamGateStatusOnline(false, examPasscode, { applyAll: true });
+      setIsExamGateOpen(false);
+      setGateMatrix(res.gateMatrix);
+      if (res.source) setGateSource(res.source);
+      setBroadcastNotice('🔒 SEMUA AKSES SOAL resmi DIKUNCI. Seluruh peserta akan tertahan di Ruang Tunggu.');
+      setTimeout(() => setBroadcastNotice(null), 5000);
+    } catch (err) {
+      console.warn('Error locking all gates:', err);
+      setIsExamGateOpen(false);
+      setGateMatrix({
+        'SMP_Penyisihan': false,
+        'SMP_Semifinal': false,
+        'SMA_Penyisihan': false,
+        'SMA_Semifinal': false,
+      });
+      setBroadcastNotice('🔒 SEMUA AKSES SOAL resmi DIKUNCI.');
+      setTimeout(() => setBroadcastNotice(null), 5000);
     } finally {
       setIsTogglingGate(false);
     }
@@ -869,7 +933,6 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
       id: `mmo-custom-${Date.now()}`,
       category: newCategory,
       stage: newStage,
-      focus: newFocus,
       domain: newDomain,
       type: newType,
       questionNumber: questionsList.length + 1,
@@ -1150,82 +1213,296 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
         </div>
       </div>
 
-      {/* Master Exam Gate Control Banner (Panitia switch to unlock exam questions for examinees) */}
-      <div
-        className={`p-4 sm:p-5 rounded-3xl border transition-all shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 ${
-          isExamGateOpen
-            ? 'bg-emerald-50/90 border-emerald-300 text-emerald-950'
-            : 'bg-amber-50/90 border-amber-300 text-amber-950'
-        }`}
-      >
-        <div className="flex items-start sm:items-center gap-3.5">
-          <div
-            className={`w-11 h-11 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-xs ${
-              isExamGateOpen ? 'bg-emerald-600' : 'bg-amber-600'
-            }`}
-          >
-            {isExamGateOpen ? <Unlock className="w-6 h-6" /> : <Lock className="w-6 h-6" />}
-          </div>
+      {/* 4-Switch Exam Gate Control Panel (Separate toggles for SMP & SMA per Babak) */}
+      <div className="bg-[#fafafa] border border-[#D5D5D5] rounded-3xl p-5 sm:p-6 shadow-xs space-y-4">
+        {/* Panel Header */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-[#D5D5D5]">
           <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span
-                className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-lg border ${
-                  isExamGateOpen
-                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                    : 'bg-amber-100 text-amber-800 border-amber-300'
-                }`}
-              >
-                {isExamGateOpen ? '● Akses Soal: DIBUKA' : '● Akses Soal: TERKUNCI (Ruang Tunggu)'}
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider bg-[#53585E] text-[#83B9DF] px-2.5 py-0.5 rounded-lg border border-[#83B9DF]/30">
+                Kontrol Pintu Akses Soal Ujian
               </span>
-              <span className="text-[10px] text-zinc-600 bg-white/80 border border-[#D5D5D5] px-2 py-0.5 rounded-lg font-mono">
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${
+                Object.values(gateMatrix).some(Boolean)
+                  ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                  : 'bg-amber-100 text-amber-800 border-amber-300'
+              }`}>
+                {Object.values(gateMatrix).filter(Boolean).length} dari 4 Akses Terbuka
+              </span>
+              <span className="text-[10px] text-zinc-600 bg-white border border-[#D5D5D5] px-2 py-0.5 rounded-lg font-mono">
                 {gateSource === 'server' ? '🌐 Vercel Serverless Sync' : '⚡ Local Resilient Cache'}
               </span>
-              <span className="text-[10px] text-zinc-600 bg-white/80 border border-[#D5D5D5] px-2 py-0.5 rounded-lg flex items-center gap-1 font-mono">
+              <span className="text-[10px] text-zinc-600 bg-white border border-[#D5D5D5] px-2 py-0.5 rounded-lg flex items-center gap-1 font-mono">
                 <span>Kode Darurat:</span>
                 <strong className="text-zinc-900">{examPasscode}</strong>
               </span>
             </div>
-            <h3 className="text-base sm:text-lg font-extrabold text-zinc-900 mt-1">
-              {isExamGateOpen
-                ? 'Ujian Sedang Berlangsung — Akses Soal Terbuka'
-                : 'Peserta Tertahan di Ruang Tunggu Ujian'}
-            </h3>
-            <p className="text-xs text-zinc-600 mt-0.5">
-              {isExamGateOpen
-                ? 'Semua peserta yang login langsung dapat membaca dan menjawab butir soal MMO 2027.'
-                : 'Peserta yang telah login di HP atau laptop berada di Ruang Tunggu Ujian dan belum dapat melihat butir soal sampai tombol di samping diaktifkan.'}
+            <h2 className="text-base sm:text-lg font-extrabold text-zinc-900">
+              Pengaturan Akses Soal per Jenjang (SMP / SMA) & Babak (Penyisihan / Semifinal)
+            </h2>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              Panitia dapat membuka dan mengunci akses soal untuk tiap jenjang dan babak secara mandiri. Peserta yang babaknya belum dibuka akan tetap berada di Ruang Tunggu.
             </p>
+          </div>
+
+          {/* Batch Actions: Buka Semua & Kunci Semua */}
+          <div className="flex flex-wrap items-center gap-2 shrink-0 self-start lg:self-center">
+            <button
+              type="button"
+              onClick={handleOpenAllGates}
+              disabled={isTogglingGate}
+              className="px-3.5 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs transition-all duration-300 flex items-center gap-1.5 cursor-pointer shadow-xs hover:-translate-y-0.5 hover:shadow-[0_4px_14px_rgba(16,185,129,0.3)]"
+              title="Buka akses soal untuk semua jenjang dan babak sekaligus"
+            >
+              <Unlock className="w-3.5 h-3.5 text-white" />
+              <span>Buka Semua Pintu</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleLockAllGates}
+              disabled={isTogglingGate}
+              className="px-3.5 py-2 rounded-2xl bg-[#53585E] hover:bg-[#41454a] disabled:opacity-50 text-white font-bold text-xs transition-all duration-300 flex items-center gap-1.5 cursor-pointer shadow-xs hover:-translate-y-0.5"
+              title="Kunci semua akses soal (semua peserta tertahan di Ruang Tunggu)"
+            >
+              <Lock className="w-3.5 h-3.5 text-[#83B9DF]" />
+              <span>Kunci Semua Pintu</span>
+            </button>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 shrink-0 self-start md:self-center">
-          <button
-            type="button"
-            onClick={handleToggleExamGate}
-            disabled={isTogglingGate}
-            className={`px-5 py-3 rounded-2xl font-bold text-xs sm:text-sm text-white transition-all cursor-pointer shadow-sm flex items-center gap-2 ${
-              isExamGateOpen
-                ? 'bg-amber-600 hover:bg-amber-700'
-                : 'bg-emerald-600 hover:bg-emerald-700'
+        {/* 4 Interactive Switches Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+          {/* 1. SMP · Babak Penyisihan */}
+          <div
+            className={`p-4 rounded-3xl border transition-all duration-300 flex flex-col justify-between space-y-3 ${
+              gateMatrix['SMP_Penyisihan']
+                ? 'bg-emerald-50/90 border-emerald-300 shadow-xs ring-1 ring-emerald-400/40'
+                : 'bg-white border-[#D5D5D5] hover:border-[#83B9DF]/70'
             }`}
           >
-            {isTogglingGate ? (
-              <>
-                <RotateCcw className="w-4 h-4 animate-spin" />
-                <span>Menghubungi Server...</span>
-              </>
-            ) : isExamGateOpen ? (
-              <>
-                <Lock className="w-4 h-4" />
-                <span>Kunci Akses Soal (Tutup Ujian)</span>
-              </>
-            ) : (
-              <>
-                <Unlock className="w-4 h-4" />
-                <span>Buka Akses Soal Ujian Sekarang</span>
-              </>
-            )}
-          </button>
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-lg bg-blue-100 text-blue-800 border border-blue-200">
+                  Jenjang SMP
+                </span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${
+                  gateMatrix['SMP_Penyisihan']
+                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                    : 'bg-zinc-100 text-zinc-600 border-zinc-200'
+                }`}>
+                  {gateMatrix['SMP_Penyisihan'] ? '● TERBUKA' : '○ TERKUNCI'}
+                </span>
+              </div>
+              <h3 className="text-sm font-bold text-zinc-900">
+                SMP · Babak Penyisihan
+              </h3>
+              <p className="text-[11px] text-zinc-500 mt-0.5 leading-snug">
+                Langkah Awal Menuju Puncak Kompetisi
+              </p>
+            </div>
+
+            <button
+              type="button"
+              disabled={togglingKey === 'SMP_Penyisihan'}
+              onClick={() => handleToggleSpecificGate('SMP_Penyisihan')}
+              className={`w-full py-2.5 px-3 rounded-2xl font-bold text-xs transition-all duration-300 flex items-center justify-center gap-1.5 cursor-pointer shadow-xs ${
+                gateMatrix['SMP_Penyisihan']
+                  ? 'bg-amber-600 hover:bg-amber-700 text-white hover:shadow-[0_4px_12px_rgba(217,119,6,0.3)]'
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white hover:shadow-[0_4px_12px_rgba(16,185,129,0.3)]'
+              }`}
+            >
+              {togglingKey === 'SMP_Penyisihan' ? (
+                <>
+                  <RotateCcw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Menyimpan...</span>
+                </>
+              ) : gateMatrix['SMP_Penyisihan'] ? (
+                <>
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Kunci Soal SMP Penyisihan</span>
+                </>
+              ) : (
+                <>
+                  <Unlock className="w-3.5 h-3.5" />
+                  <span>Buka Soal SMP Penyisihan</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* 2. SMP · Babak Semifinal */}
+          <div
+            className={`p-4 rounded-3xl border transition-all duration-300 flex flex-col justify-between space-y-3 ${
+              gateMatrix['SMP_Semifinal']
+                ? 'bg-emerald-50/90 border-emerald-300 shadow-xs ring-1 ring-emerald-400/40'
+                : 'bg-white border-[#D5D5D5] hover:border-[#83B9DF]/70'
+            }`}
+          >
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-lg bg-blue-100 text-blue-800 border border-blue-200">
+                  Jenjang SMP
+                </span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${
+                  gateMatrix['SMP_Semifinal']
+                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                    : 'bg-zinc-100 text-zinc-600 border-zinc-200'
+                }`}>
+                  {gateMatrix['SMP_Semifinal'] ? '● TERBUKA' : '○ TERKUNCI'}
+                </span>
+              </div>
+              <h3 className="text-sm font-bold text-zinc-900">
+                SMP · Babak Semifinal
+              </h3>
+              <p className="text-[11px] text-zinc-500 mt-0.5 leading-snug">
+                Tantangan Analitis & Penentuan Finalis
+              </p>
+            </div>
+
+            <button
+              type="button"
+              disabled={togglingKey === 'SMP_Semifinal'}
+              onClick={() => handleToggleSpecificGate('SMP_Semifinal')}
+              className={`w-full py-2.5 px-3 rounded-2xl font-bold text-xs transition-all duration-300 flex items-center justify-center gap-1.5 cursor-pointer shadow-xs ${
+                gateMatrix['SMP_Semifinal']
+                  ? 'bg-amber-600 hover:bg-amber-700 text-white hover:shadow-[0_4px_12px_rgba(217,119,6,0.3)]'
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white hover:shadow-[0_4px_12px_rgba(16,185,129,0.3)]'
+              }`}
+            >
+              {togglingKey === 'SMP_Semifinal' ? (
+                <>
+                  <RotateCcw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Menyimpan...</span>
+                </>
+              ) : gateMatrix['SMP_Semifinal'] ? (
+                <>
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Kunci Soal SMP Semifinal</span>
+                </>
+              ) : (
+                <>
+                  <Unlock className="w-3.5 h-3.5" />
+                  <span>Buka Soal SMP Semifinal</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* 3. SMA · Babak Penyisihan */}
+          <div
+            className={`p-4 rounded-3xl border transition-all duration-300 flex flex-col justify-between space-y-3 ${
+              gateMatrix['SMA_Penyisihan']
+                ? 'bg-emerald-50/90 border-emerald-300 shadow-xs ring-1 ring-emerald-400/40'
+                : 'bg-white border-[#D5D5D5] hover:border-[#83B9DF]/70'
+            }`}
+          >
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-lg bg-indigo-100 text-indigo-800 border border-indigo-200">
+                  Jenjang SMA
+                </span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${
+                  gateMatrix['SMA_Penyisihan']
+                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                    : 'bg-zinc-100 text-zinc-600 border-zinc-200'
+                }`}>
+                  {gateMatrix['SMA_Penyisihan'] ? '● TERBUKA' : '○ TERKUNCI'}
+                </span>
+              </div>
+              <h3 className="text-sm font-bold text-zinc-900">
+                SMA · Babak Penyisihan
+              </h3>
+              <p className="text-[11px] text-zinc-500 mt-0.5 leading-snug">
+                Langkah Awal Menuju Puncak Kompetisi
+              </p>
+            </div>
+
+            <button
+              type="button"
+              disabled={togglingKey === 'SMA_Penyisihan'}
+              onClick={() => handleToggleSpecificGate('SMA_Penyisihan')}
+              className={`w-full py-2.5 px-3 rounded-2xl font-bold text-xs transition-all duration-300 flex items-center justify-center gap-1.5 cursor-pointer shadow-xs ${
+                gateMatrix['SMA_Penyisihan']
+                  ? 'bg-amber-600 hover:bg-amber-700 text-white hover:shadow-[0_4px_12px_rgba(217,119,6,0.3)]'
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white hover:shadow-[0_4px_12px_rgba(16,185,129,0.3)]'
+              }`}
+            >
+              {togglingKey === 'SMA_Penyisihan' ? (
+                <>
+                  <RotateCcw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Menyimpan...</span>
+                </>
+              ) : gateMatrix['SMA_Penyisihan'] ? (
+                <>
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Kunci Soal SMA Penyisihan</span>
+                </>
+              ) : (
+                <>
+                  <Unlock className="w-3.5 h-3.5" />
+                  <span>Buka Soal SMA Penyisihan</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* 4. SMA · Babak Semifinal */}
+          <div
+            className={`p-4 rounded-3xl border transition-all duration-300 flex flex-col justify-between space-y-3 ${
+              gateMatrix['SMA_Semifinal']
+                ? 'bg-emerald-50/90 border-emerald-300 shadow-xs ring-1 ring-emerald-400/40'
+                : 'bg-white border-[#D5D5D5] hover:border-[#83B9DF]/70'
+            }`}
+          >
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-lg bg-indigo-100 text-indigo-800 border border-indigo-200">
+                  Jenjang SMA
+                </span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${
+                  gateMatrix['SMA_Semifinal']
+                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                    : 'bg-zinc-100 text-zinc-600 border-zinc-200'
+                }`}>
+                  {gateMatrix['SMA_Semifinal'] ? '● TERBUKA' : '○ TERKUNCI'}
+                </span>
+              </div>
+              <h3 className="text-sm font-bold text-zinc-900">
+                SMA · Babak Semifinal
+              </h3>
+              <p className="text-[11px] text-zinc-500 mt-0.5 leading-snug">
+                Tantangan Analitis & Penentuan Finalis
+              </p>
+            </div>
+
+            <button
+              type="button"
+              disabled={togglingKey === 'SMA_Semifinal'}
+              onClick={() => handleToggleSpecificGate('SMA_Semifinal')}
+              className={`w-full py-2.5 px-3 rounded-2xl font-bold text-xs transition-all duration-300 flex items-center justify-center gap-1.5 cursor-pointer shadow-xs ${
+                gateMatrix['SMA_Semifinal']
+                  ? 'bg-amber-600 hover:bg-amber-700 text-white hover:shadow-[0_4px_12px_rgba(217,119,6,0.3)]'
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white hover:shadow-[0_4px_12px_rgba(16,185,129,0.3)]'
+              }`}
+            >
+              {togglingKey === 'SMA_Semifinal' ? (
+                <>
+                  <RotateCcw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Menyimpan...</span>
+                </>
+              ) : gateMatrix['SMA_Semifinal'] ? (
+                <>
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Kunci Soal SMA Semifinal</span>
+                </>
+              ) : (
+                <>
+                  <Unlock className="w-3.5 h-3.5" />
+                  <span>Buka Soal SMA Semifinal</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -2940,7 +3217,6 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
                   >
                     <option value="Penyisihan">Penyisihan</option>
                     <option value="Semifinal">Semifinal</option>
-                    <option value="Final">Final</option>
                   </select>
                 </div>
                 <div>
@@ -3086,8 +3362,8 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
               </div>
 
               <form onSubmit={handleSaveQuestion} className="space-y-4">
-                {/* Category, Stage, Focus, Domain, and Type */}
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                {/* Category, Stage, Domain, and Type */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-zinc-800 mb-1">Kategori</label>
                     <select
@@ -3107,35 +3383,11 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
                       onChange={(e) => {
                         const val = e.target.value as CompetitionStage;
                         setNewStage(val);
-                        if (val === 'Penyisihan') {
-                          setNewFocus('Explore');
-                          setNewType('multiple_choice');
-                        } else if (val === 'Semifinal') {
-                          setNewFocus('Explore + Think');
-                          setNewType('multiple_choice');
-                        } else {
-                          setNewFocus('Think + Excel');
-                          setNewType('short_answer');
-                        }
                       }}
                       className="w-full bg-white border border-[#D5D5D5] rounded-xl px-2.5 py-2 text-xs text-zinc-900 focus:outline-none focus:border-[#646464]"
                     >
                       <option value="Penyisihan">Penyisihan</option>
                       <option value="Semifinal">Semifinal</option>
-                      <option value="Final">Final</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-zinc-800 mb-1">Fokus Karakter</label>
-                    <select
-                      value={newFocus}
-                      onChange={(e) => setNewFocus(e.target.value as QuestionFocus)}
-                      className="w-full bg-white border border-[#D5D5D5] rounded-xl px-2.5 py-2 text-xs text-zinc-900 focus:outline-none focus:border-[#646464]"
-                    >
-                      <option value="Explore">Explore</option>
-                      <option value="Explore + Think">Explore + Think</option>
-                      <option value="Think + Excel">Think + Excel</option>
                     </select>
                   </div>
 
@@ -3243,7 +3495,7 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
                   </div>
                 ) : (
                   <div className="bg-[#f7f7f8] border border-[#D5D5D5] p-3.5 rounded-2xl text-xs space-y-1">
-                    <span className="font-bold text-zinc-900 block">Mode Uraian / Problem Solving (Babak Final)</span>
+                    <span className="font-bold text-zinc-900 block">Mode Uraian / Problem Solving</span>
                     <p className="text-zinc-600 text-[11px]">
                       Peserta akan disajikan kolom input nilai akhir serta lembar uraian strategi penalaran.
                     </p>
@@ -3362,7 +3614,7 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
                     </div>
                   ) : (
                     <div className="bg-[#fafafa] border border-dashed border-[#D5D5D5] p-3.5 rounded-2xl space-y-2 text-xs">
-                      <span className="font-bold text-zinc-800 block">Pratinjau Lembar Uraian Final:</span>
+                      <span className="font-bold text-zinc-800 block">Pratinjau Lembar Uraian:</span>
                       <div className="p-2 bg-white border border-[#D5D5D5] rounded-xl text-zinc-500 text-[11px] font-mono">
                         Target Jawaban: <strong className="text-zinc-900">{newCorrectAnswer || '-'}</strong>
                       </div>
@@ -3376,7 +3628,7 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
 
               <div className="mt-6 pt-3 border-t border-[#D5D5D5] text-[11px] text-zinc-500 flex items-center justify-between">
                 <span>Total butir soal aktif: <strong className="text-zinc-900">{questionsList.length} butir</strong></span>
-                <span className="font-mono text-zinc-700">Explore, Think, Excel</span>
+                <span className="font-mono text-zinc-700">Bank Soal Resmi MMO 2027</span>
               </div>
             </div>
           </div>
@@ -3453,7 +3705,7 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
 
                 {/* Stage Filter (Babak) */}
                 <div className="flex items-center bg-white border border-[#D5D5D5] p-0.5 rounded-2xl shadow-2xs">
-                  {(['ALL', 'Penyisihan', 'Semifinal', 'Final'] as const).map((stg) => (
+                  {(['ALL', 'Penyisihan', 'Semifinal'] as const).map((stg) => (
                     <button
                       key={stg}
                       onClick={() => setQbStageFilter(stg)}
@@ -3563,7 +3815,7 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
                         </span>
                         {q.stage && (
                           <span className="bg-[#646464] text-white font-bold px-2 py-0.5 rounded-md text-[10px]">
-                            {q.stage} ({q.focus})
+                            {q.stage}
                           </span>
                         )}
                         <span className="text-zinc-500 font-mono text-[11px]">

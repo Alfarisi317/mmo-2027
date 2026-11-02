@@ -130,13 +130,9 @@ export const ExamReceiptView: React.FC<ExamReceiptViewProps> = ({
               </div>
 
               <div className="grid grid-cols-3 px-4 py-3">
-                <span className="text-zinc-500 font-medium">Babak & Tema</span>
+                <span className="text-zinc-500 font-medium">Babak Kompetisi</span>
                 <span className="col-span-2 text-zinc-900 font-medium">
-                  Babak {participant.stage || 'Penyisihan'} · Fokus: {
-                    participant.stage === 'Final' ? 'Think + Excel (Uraian & Problem Solving)' :
-                    participant.stage === 'Semifinal' ? 'Explore + Think (Penalaran Majemuk)' :
-                    'Explore (Pengamatan Pola & Struktur)'
-                  }
+                  Babak {participant.stage || 'Penyisihan'}
                 </span>
               </div>
 

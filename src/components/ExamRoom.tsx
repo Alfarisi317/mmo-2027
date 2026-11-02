@@ -6,7 +6,6 @@ import { ExamPalette } from './ExamPalette';
 import { ExamTimer } from './ExamTimer';
 import { AIProctor } from './AIProctor';
 import { AntiCheatGuard } from './AntiCheatGuard';
-import { ScratchpadModal } from './ScratchpadModal';
 import { ApiService } from '../services/api';
 
 interface ExamRoomProps {
@@ -33,7 +32,6 @@ export const ExamRoom: React.FC<ExamRoomProps> = ({
   const [trustScore, setTrustScore] = useState<number>(100);
   const [strikeCount, setStrikeCount] = useState<number>(0);
   const [showSubmitModal, setShowSubmitModal] = useState<boolean>(false);
-  const [isScratchpadOpen, setIsScratchpadOpen] = useState<boolean>(false);
   const [proctorMessage, setProctorMessage] = useState<string | null>(null);
 
   // Mobile drawer/view toggle ('question' | 'camera' | 'palette')
@@ -467,7 +465,6 @@ export const ExamRoom: React.FC<ExamRoomProps> = ({
               onClearAnswer={handleClearAnswer}
               onPrev={() => setCurrentIndex((prev) => Math.max(0, prev - 1))}
               onNext={() => setCurrentIndex((prev) => Math.min(questions.length - 1, prev + 1))}
-              onOpenScratchpad={() => setIsScratchpadOpen(true)}
               onSubmitExam={() => setShowSubmitModal(true)}
               isFirst={currentIndex === 0}
               isLast={currentIndex === questions.length - 1}
@@ -597,12 +594,6 @@ export const ExamRoom: React.FC<ExamRoomProps> = ({
           <span>Selesai Ujian</span>
         </button>
       </aside>
-
-      {/* Scratchpad Modal */}
-      <ScratchpadModal
-        isOpen={isScratchpadOpen}
-        onClose={() => setIsScratchpadOpen(false)}
-      />
 
       {/* Confirmation Submit Modal */}
       {showSubmitModal && (

@@ -130,25 +130,7 @@ export const INITIAL_QUESTIONS_DATA: Question[] = [
   },
 
   // ==========================================
-  // KATEGORI SMP — BABAK FINAL (THINK + EXCEL)
-  // ==========================================
-  {
-    id: 'smp-fin-01',
-    category: 'SMP',
-    stage: 'Final',
-    focus: 'Think + Excel',
-    domain: 'Aljabar',
-    type: 'short_answer',
-    questionNumber: 1,
-    text: '【SOAL FINAL URAIAN — PROBLEM SOLVING】\nDiketahui $x$ dan $y$ adalah bilangan bulat positif yang memenuhi persamaan:\n$$\\frac{1}{x} + \\frac{1}{y} = \\frac{1}{6}$$\nTentukan seluruh pasangan bilangan bulat positif $(x, y)$ yang memenuhi persamaan tersebut, serta jelaskan strategi faktorisasi aljabar yang Anda gunakan untuk membuktikan bahwa tidak ada solusi lain.',
-    options: [],
-    correctAnswer: '(7, 42), (8, 24), (9, 18), (10, 15), (12, 12), (15, 10), (18, 9), (24, 8), (42, 7)',
-    explanation: 'Strategi Simon\'s Favorite Factoring Trick (SFFT):\nKalikan kedua ruas dengan $6xy$:\n$$6y + 6x = xy \\implies xy - 6x - 6y = 0$$\nFaktorkan dengan menambahkan $(-6) \\times (-6) = 36$ pada kedua ruas:\n$$x(y - 6) - 6(y - 6) = 36 \\implies (x - 6)(y - 6) = 36$$\nKarena $x, y > 0$, maka $x > 6$ dan $y > 6$, sehingga $(x - 6)$ dan $(y - 6)$ adalah faktor-faktor positif dari $36$.\nFaktor positif dari $36$: $1, 2, 3, 4, 6, 9, 12, 18, 36$ (ada $9$ faktor).\nTerdapat tepat $9$ pasangan solusi:\n$$(7, 42), (8, 24), (9, 18), (10, 15), (12, 12), (15, 10), (18, 9), (24, 8), (42, 7)$$.',
-    points: { correct: 10, wrong: 0, blank: 0 },
-  },
-
-  // ==========================================
-  // KATEGORI SMA — BABAK PENYISIHAN (EXPLORE)
+  // KATEGORI SMA — BABAK PENYISIHAN
   // ==========================================
   {
     id: 'sma-exp-01',
@@ -273,23 +255,5 @@ export const INITIAL_QUESTIONS_DATA: Question[] = [
     correctAnswer: 'A',
     explanation: 'Penalaran Teorema Apollonius pada garis berat segitiga:\n$$AB^2 + AC^2 = 2\\left(AD^2 + BD^2\\right)$$\nDi mana $c = AB = 9$, $b = AC = 8$, dan $BD = \\frac{a}{2} = \\frac{7}{2}$.\n$$9^2 + 8^2 = 2\\left(AD^2 + \\left(\\frac{7}{2}\\right)^2\\right)$$\n$$81 + 64 = 2\\left(AD^2 + \\frac{49}{4}\\right)$$\n$$145 = 2AD^2 + \\frac{49}{2} \\implies 2AD^2 = 145 - 24.5 = 120.5 \\implies 2AD^2 = \\frac{241}{2}$$\n$$AD^2 = \\frac{241}{4} \\approx 60.25$$. Jika garis berat ke sisi $a=7$: $2b^2 + 2c^2 - a^2 = 4m_a^2$.\n$$4m_a^2 = 2(64) + 2(81) - 49 = 128 + 162 - 49 = 241 \\implies m_a = \\frac{\\sqrt{241}}{2}$.\nJika garis berat ditarik ke sisi $b=8$ ($AC$): $2(49) + 2(81) - 64 = 98 + 162 - 64 = 196 = 4m_b^2 \\implies m_b^2 = 49 \\implies m_b = 7$.\nSehingga untuk garis berat ke sisi $AC$, panjangnya tepat $7$.',
     points: { correct: 4, wrong: -1, blank: 0 },
-  },
-
-  // ==========================================
-  // KATEGORI SMA — BABAK FINAL (THINK + EXCEL)
-  // ==========================================
-  {
-    id: 'sma-fin-01',
-    category: 'SMA',
-    stage: 'Final',
-    focus: 'Think + Excel',
-    domain: 'Teori Bilangan',
-    type: 'short_answer',
-    questionNumber: 1,
-    text: '【SOAL FINAL URAIAN — PROBLEM SOLVING & PEMBUKTIAN】\nTentukan seluruh bilangan prima $p$ sedemikian rupa sehingga bilangan $2^p + p^2$ juga merupakan bilangan prima.\nJelaskan penalaran matematis lengkap dan analisis modulo yang Anda gunakan untuk membuktikan bahwa tidak ada bilangan prima lain yang memenuhi.',
-    options: [],
-    correctAnswer: 'p = 3',
-    explanation: 'Penalaran & Pembuktian Modulo 3:\n1. Uji nilai awal bilangan prima:\n- Untuk $p = 2$: $2^2 + 2^2 = 4 + 4 = 8$ (Bukan prima, karena genap $>2$).\n- Untuk $p = 3$: $2^3 + 3^2 = 8 + 9 = 17$ (Bilangan prima!). Maka $p = 3$ adalah solusi yang valid.\n\n2. Analisis untuk bilangan prima $p > 3$:\nSetiap bilangan prima $p > 3$ tidak habis dibagi $3$, sehingga $p \\equiv 1 \\pmod{3}$ atau $p \\equiv 2 \\pmod{3}$.\nAkibatnya:\n$$p^2 \\equiv (\\pm 1)^2 \\equiv 1 \\pmod{3}$$\nSementara itu, untuk suku $2^p$:\nKarena $p > 3$ adalah prima ganjil, maka $p = 2k + 1$.\n$$2 \\equiv -1 \\pmod{3} \\implies 2^p = 2^{2k+1} = (2^2)^k \\cdot 2 \\equiv 1^k \\cdot (-1) \\equiv -1 \\pmod{3}$$\n\n3. Jumlahkan kedua suku:\n$$2^p + p^2 \\equiv (-1) + 1 \\equiv 0 \\pmod{3}$$\nArtinya, untuk setiap prima $p > 3$, nilai $2^p + p^2$ pasti selalu merupakan kelipatan $3$.\nKarena untuk $p > 3$, nilai $2^p + p^2 > 2^3 + 3^2 = 17 > 3$, maka bilangan tersebut merupakan kelipatan $3$ yang lebih besar dari $3$, sehingga pasti merupakan bilangan komposit (bukan prima).\n\nKesimpulan akhir: Satu-satunya bilangan prima yang memenuhi adalah $p = 3$.',
-    points: { correct: 10, wrong: 0, blank: 0 },
   },
 ];

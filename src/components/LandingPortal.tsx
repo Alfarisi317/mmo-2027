@@ -46,6 +46,7 @@ import {
   getExamGateStatusOnline,
   changeParticipantPasswordOnline,
   verifyEmergencyGatePasscodeOnline,
+  isGateOpenForParticipant,
 } from '../services/registeredParticipants';
 
 interface LandingPortalProps {
@@ -99,8 +100,9 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
   const [isDemoActive, setIsDemoActive] = useState<boolean>(true);
 
   // Segmented interactive selectors for Jenjang (SMP vs SMA) & Babak (Penyisihan vs Semifinal)
-  const [selectedCategory, setSelectedCategory] = useState<OlympiadCategory>('SMA');
-  const [selectedStage, setSelectedStage] = useState<CompetitionStage>('Penyisihan');
+  // Siswa WAJIB mengklik salah satu opsi secara manual (tidak ada default terpilih / tercentang)
+  const [selectedCategory, setSelectedCategory] = useState<OlympiadCategory | null>(null);
+  const [selectedStage, setSelectedStage] = useState<CompetitionStage | null>(null);
 
   useEffect(() => {
     // 1. Initial quick load from local storage
@@ -141,7 +143,15 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
         const status = await getExamGateStatusOnline();
         if (!isMounted) return;
         setLastGateCheckTime(new Date().toLocaleTimeString('id-ID'));
-        if (status.isOpen) {
+        
+        // Periksa apakah gerbang untuk jenjang dan babak peserta ini telah dibuka oleh pengawas
+        const canEnter = isGateOpenForParticipant(
+          status,
+          waitingParticipant.category,
+          waitingParticipant.stage || 'Penyisihan'
+        );
+
+        if (canEnter) {
           setIsGateOpen(true);
           // Auto transition to exam
           setTimeout(() => {
@@ -262,11 +272,23 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
   const handleLoginAndStart = async (e: React.FormEvent) => {
     e.preventDefault();
     setValidationError(null);
+
+    // Validasi wajib pilih Jenjang dan Babak
+    if (!selectedCategory || !selectedStage) {
+      setValidationError('Silakan pilih salah satu opsi Jenjang (SMP/SMA) dan Babak (Penyisihan/Semifinal) terlebih dahulu sebelum masuk.');
+      return;
+    }
+
     setIsLoggingIn(true);
 
     try {
       // Authenticate directly against server backend so HP and Laptop are 100% in sync
-      const result = await authenticateParticipantOnline(fullNameInput, passwordInput);
+      const result = await authenticateParticipantOnline(
+        fullNameInput,
+        passwordInput,
+        selectedCategory,
+        selectedStage
+      );
       if (!result.success || !result.participant) {
         setValidationError(result.error || 'Nama lengkap atau kata sandi (NISN) tidak cocok dengan data pendaftaran.');
         setIsLoggingIn(false);
@@ -280,7 +302,7 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
         stage: selectedStage,
       };
 
-      // If panitia has already opened the exam gate, start immediately
+      // If panitia has already opened the exam gate for this category & stage, start immediately
       if (result.isExamGateOpen) {
         setLoginSuccessParticipant(p);
         setTimeout(() => {
@@ -1110,15 +1132,23 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                       <div className="flex items-center gap-2">
                         <Sparkles className="w-4 h-4 text-[#83B9DF]" />
                         <span className="text-xs font-extrabold text-[#53585E] uppercase tracking-wider">
-                          Pilih Paket Soal Ujian
+                          Pilih Paket Soal Ujian (Wajib Pilih)
                         </span>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[11px] font-bold text-[#53585E] bg-[#83B9DF]/20 px-2.5 py-0.5 rounded-lg border border-[#83B9DF]/40">
-                          {selectedCategory}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-lg border transition-all ${
+                          selectedCategory
+                            ? 'text-[#53585E] bg-[#83B9DF]/20 border-[#83B9DF]/40'
+                            : 'text-amber-800 bg-amber-50 border-amber-300'
+                        }`}>
+                          {selectedCategory ? `Jenjang ${selectedCategory}` : '⚠️ Jenjang: Belum Dipilih'}
                         </span>
-                        <span className="text-[11px] font-bold text-[#53585E] bg-[#83B9DF]/20 px-2.5 py-0.5 rounded-lg border border-[#83B9DF]/40">
-                          {selectedStage}
+                        <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-lg border transition-all ${
+                          selectedStage
+                            ? 'text-[#53585E] bg-[#83B9DF]/20 border-[#83B9DF]/40'
+                            : 'text-amber-800 bg-amber-50 border-amber-300'
+                        }`}>
+                          {selectedStage ? `Babak ${selectedStage}` : '⚠️ Babak: Belum Dipilih'}
                         </span>
                       </div>
                     </div>
@@ -1127,18 +1157,20 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
                         <label className="text-xs font-bold text-zinc-800">
-                          1. Pilih Tingkat / Jenjang Sekolah:
+                          1. Pilih Tingkat / Jenjang Sekolah: <span className="text-rose-500">*</span>
                         </label>
-                        <span className="text-[11px] text-zinc-500">Klik tombol di bawah</span>
+                        <span className="text-[11px] text-zinc-500">
+                          {selectedCategory ? `Terpilih: Jenjang ${selectedCategory}` : 'Wajib klik salah satu'}
+                        </span>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                         <button
                           type="button"
                           onClick={() => setSelectedCategory('SMP')}
-                          className={`p-3 rounded-2xl border text-left transition-all duration-300 cursor-pointer flex items-center justify-between group ${
+                          className={`p-3.5 rounded-2xl border text-left transition-all duration-300 cursor-pointer flex items-center justify-between group ${
                             selectedCategory === 'SMP'
                               ? 'bg-[#53585E] text-white border-[#53585E] shadow-sm shadow-[#83B9DF]/30 ring-2 ring-[#83B9DF]/70 -translate-y-0.5'
-                              : 'bg-white text-zinc-700 border-[#D5D5D5] hover:border-[#83B9DF] hover:bg-zinc-50 hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(131,185,223,0.2)]'
+                              : 'bg-white text-zinc-700 border-[#D5D5D5] hover:border-[#83B9DF] hover:bg-zinc-50 hover:-translate-y-0.5 hover:shadow-[0_4px_14px_rgba(131,185,223,0.25)]'
                           }`}
                         >
                           <div>
@@ -1165,10 +1197,10 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                         <button
                           type="button"
                           onClick={() => setSelectedCategory('SMA')}
-                          className={`p-3 rounded-2xl border text-left transition-all duration-300 cursor-pointer flex items-center justify-between group ${
+                          className={`p-3.5 rounded-2xl border text-left transition-all duration-300 cursor-pointer flex items-center justify-between group ${
                             selectedCategory === 'SMA'
                               ? 'bg-[#53585E] text-white border-[#53585E] shadow-sm shadow-[#83B9DF]/30 ring-2 ring-[#83B9DF]/70 -translate-y-0.5'
-                              : 'bg-white text-zinc-700 border-[#D5D5D5] hover:border-[#83B9DF] hover:bg-zinc-50 hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(131,185,223,0.2)]'
+                              : 'bg-white text-zinc-700 border-[#D5D5D5] hover:border-[#83B9DF] hover:bg-zinc-50 hover:-translate-y-0.5 hover:shadow-[0_4px_14px_rgba(131,185,223,0.25)]'
                           }`}
                         >
                           <div>
@@ -1198,18 +1230,20 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
                         <label className="text-xs font-bold text-zinc-800">
-                          2. Pilih Babak Kompetisi:
+                          2. Pilih Babak Kompetisi: <span className="text-rose-500">*</span>
                         </label>
-                        <span className="text-[11px] text-zinc-500">Klik tombol di bawah</span>
+                        <span className="text-[11px] text-zinc-500">
+                          {selectedStage ? `Terpilih: Babak ${selectedStage}` : 'Wajib klik salah satu'}
+                        </span>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                         <button
                           type="button"
                           onClick={() => setSelectedStage('Penyisihan')}
-                          className={`p-3 rounded-2xl border text-left transition-all duration-300 cursor-pointer flex items-center justify-between group ${
+                          className={`p-3.5 rounded-2xl border text-left transition-all duration-300 cursor-pointer flex items-center justify-between group ${
                             selectedStage === 'Penyisihan'
                               ? 'bg-[#53585E] text-white border-[#53585E] shadow-sm shadow-[#83B9DF]/30 ring-2 ring-[#83B9DF]/70 -translate-y-0.5'
-                              : 'bg-white text-zinc-700 border-[#D5D5D5] hover:border-[#83B9DF] hover:bg-zinc-50 hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(131,185,223,0.2)]'
+                              : 'bg-white text-zinc-700 border-[#D5D5D5] hover:border-[#83B9DF] hover:bg-zinc-50 hover:-translate-y-0.5 hover:shadow-[0_4px_14px_rgba(131,185,223,0.25)]'
                           }`}
                         >
                           <div>
@@ -1217,7 +1251,7 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                               Babak Penyisihan
                             </span>
                             <span className={`text-[11px] block mt-0.5 ${selectedStage === 'Penyisihan' ? 'text-zinc-200' : 'text-zinc-500'}`}>
-                              Tahap Seleksi & Eksplorasi Mandiri
+                              Langkah Awal Menuju Puncak Kompetisi
                             </span>
                           </div>
                           <div className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
@@ -1236,10 +1270,10 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                         <button
                           type="button"
                           onClick={() => setSelectedStage('Semifinal')}
-                          className={`p-3 rounded-2xl border text-left transition-all duration-300 cursor-pointer flex items-center justify-between group ${
+                          className={`p-3.5 rounded-2xl border text-left transition-all duration-300 cursor-pointer flex items-center justify-between group ${
                             selectedStage === 'Semifinal'
                               ? 'bg-[#53585E] text-white border-[#53585E] shadow-sm shadow-[#83B9DF]/30 ring-2 ring-[#83B9DF]/70 -translate-y-0.5'
-                              : 'bg-white text-zinc-700 border-[#D5D5D5] hover:border-[#83B9DF] hover:bg-zinc-50 hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(131,185,223,0.2)]'
+                              : 'bg-white text-zinc-700 border-[#D5D5D5] hover:border-[#83B9DF] hover:bg-zinc-50 hover:-translate-y-0.5 hover:shadow-[0_4px_14px_rgba(131,185,223,0.25)]'
                           }`}
                         >
                           <div>
@@ -1247,7 +1281,7 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                               Babak Semifinal
                             </span>
                             <span className={`text-[11px] block mt-0.5 ${selectedStage === 'Semifinal' ? 'text-zinc-200' : 'text-zinc-500'}`}>
-                              Tahap Penalaran & HOTS Lanjut
+                              Tantangan Analitis & Penentuan Finalis
                             </span>
                           </div>
                           <div className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
@@ -1332,12 +1366,29 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                       onClick={() => {
                         setFullNameInput('Siti Aulia Maharani');
                         setPasswordInput('0069876543');
+                        setSelectedCategory('SMA');
+                        setSelectedStage('Penyisihan');
                       }}
                       className="text-[11px] text-[#53585E] hover:text-[#41454a] hover:underline font-bold shrink-0 cursor-pointer"
                     >
                       Isi Contoh: Siti (SMA)
                     </button>
                   </div>
+
+                  {/* Guide banner when either category or stage is not selected yet */}
+                  {(!selectedCategory || !selectedStage) && (
+                    <div className="p-3.5 bg-amber-50/90 border border-amber-300 rounded-2xl flex items-start gap-3 text-xs text-amber-950 shadow-2xs animate-in fade-in">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <div className="font-bold text-amber-900">
+                          Panduan Wajib: Pilih Tingkat & Babak
+                        </div>
+                        <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
+                          Anda harus mengklik salah satu tombol <strong>Jenjang Sekolah (SMP/SMA)</strong> dan <strong>Babak Kompetisi (Penyisihan/Semifinal)</strong> di atas sebelum tombol masuk diaktifkan.
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Final Submit & Back buttons */}
                   <div className="pt-4 border-t border-[#D5D5D5] flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -1352,8 +1403,13 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
 
                     <button
                       type="submit"
-                      disabled={isLoggingIn}
-                      className="w-full sm:w-auto px-6 py-3 bg-[#53585E] hover:bg-[#41454a] disabled:opacity-60 text-white font-extrabold text-xs sm:text-sm rounded-2xl transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer shadow-sm hover:shadow-[0_8px_25px_rgba(131,185,223,0.38)] hover:-translate-y-0.5 border border-[#53585E]"
+                      disabled={isLoggingIn || !selectedCategory || !selectedStage}
+                      title={
+                        !selectedCategory || !selectedStage
+                          ? 'Pilih Jenjang dan Babak di atas terlebih dahulu'
+                          : 'Masuk ke Ruang Ujian'
+                      }
+                      className="w-full sm:w-auto px-6 py-3 bg-[#53585E] hover:bg-[#41454a] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:-translate-y-0 disabled:hover:shadow-none text-white font-extrabold text-xs sm:text-sm rounded-2xl transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer shadow-sm hover:shadow-[0_8px_25px_rgba(131,185,223,0.38)] hover:-translate-y-0.5 border border-[#53585E]"
                     >
                       {isLoggingIn ? (
                         <>

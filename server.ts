@@ -222,7 +222,6 @@ Format output HARUS berupa JSON Array murni (tanpa teks intro/outro):
     "type": "multiple_choice",
     "questionNumber": 1,
     "stage": "Penyisihan",
-    "focus": "Explore + Think",
     "text": "Teks lengkap soal dengan KaTeX seperti $f(x) = x^2 - 4x + 3$...",
     "formulaLatex": "x^2 - 4x + 3 = 0",
     "options": [
@@ -545,6 +544,12 @@ let serverLastSyncText: string = 'Data Bawaan Siap Pakai';
 let isExamGateOpen: boolean = false;
 let examGateOpenedAt: string | null = null;
 let examGatePasscode: string = 'MMO2027';
+let examGateMatrix: Record<string, boolean> = {
+  'SMP_Penyisihan': false,
+  'SMP_Semifinal': false,
+  'SMA_Penyisihan': false,
+  'SMA_Semifinal': false,
+};
 
 // Persistent file cache for Vercel Serverless container warm instances
 const GATE_STATE_FILE = path.join(os.tmpdir(), 'mmo_exam_gate.json');
@@ -557,6 +562,12 @@ function loadGateState(): void {
       if (typeof data.isOpen === 'boolean') isExamGateOpen = data.isOpen;
       if (data.openedAt !== undefined) examGateOpenedAt = data.openedAt;
       if (data.passcode) examGatePasscode = data.passcode;
+      if (data.gateMatrix && typeof data.gateMatrix === 'object') {
+        examGateMatrix = {
+          ...examGateMatrix,
+          ...data.gateMatrix,
+        };
+      }
     }
   } catch (e) {
     // Silently fall back to in-memory state
@@ -571,6 +582,7 @@ function saveGateState(): void {
         isOpen: isExamGateOpen,
         openedAt: examGateOpenedAt,
         passcode: examGatePasscode,
+        gateMatrix: examGateMatrix,
         updatedAt: Date.now(),
       }),
       'utf-8'
@@ -592,6 +604,7 @@ app.get('/api/exam-gate', (_req, res) => {
       isOpen: isExamGateOpen,
       openedAt: examGateOpenedAt,
       passcode: examGatePasscode,
+      gateMatrix: examGateMatrix,
     },
   });
 });
@@ -599,14 +612,45 @@ app.get('/api/exam-gate', (_req, res) => {
 // POST update exam gate status (called by Proctor Dashboard)
 app.post('/api/exam-gate', (req, res) => {
   loadGateState();
-  const { isOpen, passcode } = req.body;
-  if (typeof isOpen === 'boolean') {
-    isExamGateOpen = isOpen;
-    examGateOpenedAt = isOpen ? new Date().toISOString() : null;
+  const { isOpen, passcode, gateMatrix, gateKey, gateValue, applyAll } = req.body;
+
+  // Single gate key toggle: e.g. gateKey: 'SMP_Penyisihan', gateValue: true
+  if (gateKey && typeof gateValue === 'boolean') {
+    examGateMatrix[gateKey] = gateValue;
   }
+
+  // Bulk matrix merge
+  if (gateMatrix && typeof gateMatrix === 'object') {
+    examGateMatrix = {
+      ...examGateMatrix,
+      ...gateMatrix,
+    };
+  }
+
+  // Master switch or applyAll: turns all 4 gates open or closed
+  if (applyAll === true || (typeof isOpen === 'boolean' && !gateMatrix && !gateKey)) {
+    isExamGateOpen = isOpen;
+    examGateMatrix = {
+      'SMP_Penyisihan': isOpen,
+      'SMP_Semifinal': isOpen,
+      'SMA_Penyisihan': isOpen,
+      'SMA_Semifinal': isOpen,
+    };
+    examGateOpenedAt = isOpen ? new Date().toISOString() : null;
+  } else {
+    // When individual gates are manipulated, overall gate isOpen reflects if at least one is open
+    isExamGateOpen = Object.values(examGateMatrix).some(Boolean);
+    if (isExamGateOpen && !examGateOpenedAt) {
+      examGateOpenedAt = new Date().toISOString();
+    } else if (!isExamGateOpen) {
+      examGateOpenedAt = null;
+    }
+  }
+
   if (passcode && typeof passcode === 'string') {
     examGatePasscode = passcode.trim().toUpperCase();
   }
+
   saveGateState();
   res.json({
     success: true,
@@ -614,6 +658,7 @@ app.post('/api/exam-gate', (req, res) => {
       isOpen: isExamGateOpen,
       openedAt: examGateOpenedAt,
       passcode: examGatePasscode,
+      gateMatrix: examGateMatrix,
     },
   });
 });
@@ -767,10 +812,21 @@ app.post('/api/authenticate-participant', (req, res) => {
     });
   }
 
+  loadGateState();
+  const { category, stage } = req.body;
+  let specificGateOpen = isExamGateOpen;
+  if (category && stage) {
+    const key = `${category}_${stage}`;
+    if (typeof examGateMatrix[key] === 'boolean') {
+      specificGateOpen = examGateMatrix[key] || isExamGateOpen;
+    }
+  }
+
   res.json({
     success: true,
     participant: found,
-    isExamGateOpen,
+    isExamGateOpen: specificGateOpen,
+    gateMatrix: examGateMatrix,
   });
 });
 

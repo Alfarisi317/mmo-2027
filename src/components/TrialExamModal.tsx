@@ -7,7 +7,6 @@ import {
   ArrowRight,
   Bookmark,
   RotateCcw,
-  PenTool,
   Check,
   BookOpen,
   LogOut,
@@ -15,7 +14,6 @@ import {
 import { Question, UserAnswer } from '../types';
 import { TRIAL_QUESTIONS_SMP, TRIAL_QUESTIONS_SMA } from '../data/trialQuestions';
 import { MathRenderer } from './MathRenderer';
-import { ScratchpadModal } from './ScratchpadModal';
 
 interface TrialExamModalProps {
   isOpen: boolean;
@@ -35,7 +33,6 @@ export const TrialExamModal: React.FC<TrialExamModalProps> = ({
   const questions: Question[] = category === 'SMP' ? TRIAL_QUESTIONS_SMP : TRIAL_QUESTIONS_SMA;
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [answers, setAnswers] = useState<Record<string, UserAnswer>>({});
-  const [isScratchpadOpen, setIsScratchpadOpen] = useState<boolean>(false);
   const [showSummary, setShowSummary] = useState<boolean>(false);
   const [showExplanations, setShowExplanations] = useState<boolean>(false);
 
@@ -180,14 +177,6 @@ export const TrialExamModal: React.FC<TrialExamModalProps> = ({
 
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => setIsScratchpadOpen(true)}
-                    className="px-3.5 py-1.5 rounded-xl bg-white hover:bg-[#f7f7f8] border border-[#D5D5D5] hover:border-[#83B9DF] text-xs font-semibold text-[#53585E] flex items-center gap-1.5 cursor-pointer shadow-xs hover:-translate-y-0.5 transition-all duration-200"
-                  >
-                    <PenTool className="w-3.5 h-3.5 text-[#53585E]" />
-                    <span>Coretan Rumus</span>
-                  </button>
-
-                  <button
                     onClick={() => setShowSummary(true)}
                     className="px-3.5 py-1.5 rounded-xl bg-[#53585E] hover:bg-[#41454a] text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-sm hover:shadow-[0_6px_16px_rgba(131,185,223,0.35)] hover:-translate-y-0.5 transition-all duration-200 border border-[#53585E]"
                   >
@@ -207,9 +196,6 @@ export const TrialExamModal: React.FC<TrialExamModalProps> = ({
                     <span className="text-zinc-300">·</span>
                     <span className="text-xs font-semibold px-2.5 py-0.5 rounded-lg bg-[#83B9DF]/15 border border-[#83B9DF]/40 text-[#53585E]">
                       {currentQ.domain}
-                    </span>
-                    <span className="text-xs font-bold px-2.5 py-0.5 rounded-lg bg-[#53585E] text-[#83B9DF]">
-                      Fokus: {currentQ.focus}
                     </span>
                   </div>
 
@@ -451,12 +437,6 @@ export const TrialExamModal: React.FC<TrialExamModalProps> = ({
           </div>
         )}
       </div>
-
-      {/* Scratchpad Modal */}
-      <ScratchpadModal
-        isOpen={isScratchpadOpen}
-        onClose={() => setIsScratchpadOpen(false)}
-      />
     </div>
   );
 };

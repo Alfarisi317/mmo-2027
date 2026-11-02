@@ -9,7 +9,7 @@ export interface QuestionOption {
   text: string;
 }
 
-export type CompetitionStage = 'Penyisihan' | 'Semifinal' | 'Final';
+export type CompetitionStage = 'Penyisihan' | 'Semifinal';
 
 export type QuestionFocus = 'Explore' | 'Explore + Think' | 'Think + Excel';
 

@@ -274,11 +274,36 @@ export async function changeParticipantPasswordOnline(
 
 const EXAM_GATE_LOCAL_KEY = 'mmo_exam_gate_cache';
 
+export interface ExamGateMatrix {
+  'SMP_Penyisihan': boolean;
+  'SMP_Semifinal': boolean;
+  'SMA_Penyisihan': boolean;
+  'SMA_Semifinal': boolean;
+}
+
 export interface ExamGateStatus {
   isOpen: boolean;
   openedAt: string | null;
   passcode?: string;
+  gateMatrix?: ExamGateMatrix;
   source?: 'server' | 'cache' | 'local_override';
+}
+
+/**
+ * Checks if exam gate is open for a specific category & stage
+ */
+export function isGateOpenForParticipant(
+  status: ExamGateStatus,
+  category?: OlympiadCategory | null,
+  stage?: CompetitionStage | null
+): boolean {
+  if (status.isOpen) return true; // Master open allows all
+  if (!category || !stage) return status.isOpen;
+  const key = `${category}_${stage}` as keyof ExamGateMatrix;
+  if (status.gateMatrix && typeof status.gateMatrix[key] === 'boolean') {
+    return status.gateMatrix[key];
+  }
+  return status.isOpen;
 }
 
 /**
@@ -292,10 +317,17 @@ export async function getExamGateStatusOnline(): Promise<ExamGateStatus> {
     if (res.ok) {
       const json = await res.json();
       if (json && json.success && json.data) {
+        const defaultMatrix: ExamGateMatrix = {
+          'SMP_Penyisihan': false,
+          'SMP_Semifinal': false,
+          'SMA_Penyisihan': false,
+          'SMA_Semifinal': false,
+        };
         const status: ExamGateStatus = {
           isOpen: Boolean(json.data.isOpen),
           openedAt: json.data.openedAt ?? null,
           passcode: json.data.passcode || 'MMO2027',
+          gateMatrix: json.data.gateMatrix ? { ...defaultMatrix, ...json.data.gateMatrix } : defaultMatrix,
           source: 'server',
         };
         // Persist to local cache for fast offline / cold-start fallback
@@ -320,6 +352,12 @@ export async function getExamGateStatusOnline(): Promise<ExamGateStatus> {
         isOpen: Boolean(parsed.isOpen),
         openedAt: parsed.openedAt ?? null,
         passcode: parsed.passcode || 'MMO2027',
+        gateMatrix: parsed.gateMatrix || {
+          'SMP_Penyisihan': Boolean(parsed.isOpen),
+          'SMP_Semifinal': Boolean(parsed.isOpen),
+          'SMA_Penyisihan': Boolean(parsed.isOpen),
+          'SMA_Semifinal': Boolean(parsed.isOpen),
+        },
         source: 'cache',
       };
     }
@@ -327,32 +365,84 @@ export async function getExamGateStatusOnline(): Promise<ExamGateStatus> {
     // ignore
   }
 
-  return { isOpen: false, openedAt: null, passcode: 'MMO2027', source: 'cache' };
+  return {
+    isOpen: false,
+    openedAt: null,
+    passcode: 'MMO2027',
+    gateMatrix: {
+      'SMP_Penyisihan': false,
+      'SMP_Semifinal': false,
+      'SMA_Penyisihan': false,
+      'SMA_Semifinal': false,
+    },
+    source: 'cache',
+  };
 }
 
 /**
  * Update Exam Gate Status (called by Proctor Dashboard to open/lock the exam for students)
- * Sets both Vercel serverless API state and local storage cache
+ * Supports single gate key toggle, master toggle, or matrix batch updates
  */
 export async function setExamGateStatusOnline(
   isOpen: boolean,
-  passcode: string = 'MMO2027'
+  passcode: string = 'MMO2027',
+  gateOptions?: {
+    gateKey?: keyof ExamGateMatrix;
+    gateValue?: boolean;
+    gateMatrix?: Partial<ExamGateMatrix>;
+    applyAll?: boolean;
+  }
 ): Promise<{
   success: boolean;
   isOpen: boolean;
   passcode: string;
+  gateMatrix: ExamGateMatrix;
   source: 'server' | 'cache';
 }> {
   const timestamp = isOpen ? new Date().toISOString() : null;
+
+  // Read current cached matrix
+  let currentMatrix: ExamGateMatrix = {
+    'SMP_Penyisihan': false,
+    'SMP_Semifinal': false,
+    'SMA_Penyisihan': false,
+    'SMA_Semifinal': false,
+  };
+  try {
+    const cached = localStorage.getItem(EXAM_GATE_LOCAL_KEY);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed.gateMatrix) currentMatrix = { ...currentMatrix, ...parsed.gateMatrix };
+    }
+  } catch {
+    // ignore
+  }
+
+  // Apply mutations
+  if (gateOptions?.gateKey && typeof gateOptions.gateValue === 'boolean') {
+    currentMatrix[gateOptions.gateKey] = gateOptions.gateValue;
+  } else if (gateOptions?.gateMatrix) {
+    currentMatrix = { ...currentMatrix, ...gateOptions.gateMatrix };
+  } else if (gateOptions?.applyAll || !gateOptions) {
+    currentMatrix = {
+      'SMP_Penyisihan': isOpen,
+      'SMP_Semifinal': isOpen,
+      'SMA_Penyisihan': isOpen,
+      'SMA_Semifinal': isOpen,
+    };
+  }
+
+  const calculatedIsOpen = Object.values(currentMatrix).some(Boolean);
 
   // Optimistically cache locally so UI doesn't stutter or show false locked state
   try {
     localStorage.setItem(
       EXAM_GATE_LOCAL_KEY,
       JSON.stringify({
-        isOpen,
+        isOpen: calculatedIsOpen,
         openedAt: timestamp,
         passcode,
+        gateMatrix: currentMatrix,
         source: 'cache',
         updatedAt: Date.now(),
       })
@@ -367,7 +457,14 @@ export async function setExamGateStatusOnline(
     const res = await fetch('/api/exam-gate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isOpen, passcode }),
+      body: JSON.stringify({
+        isOpen: calculatedIsOpen,
+        passcode,
+        gateKey: gateOptions?.gateKey,
+        gateValue: gateOptions?.gateValue,
+        gateMatrix: gateOptions?.gateMatrix,
+        applyAll: gateOptions?.applyAll,
+      }),
     });
 
     if (res.ok) {
@@ -375,6 +472,7 @@ export async function setExamGateStatusOnline(
       if (json && json.success && json.data) {
         const finalIsOpen = Boolean(json.data.isOpen);
         const finalPasscode = json.data.passcode || passcode;
+        const finalMatrix: ExamGateMatrix = json.data.gateMatrix || currentMatrix;
         try {
           localStorage.setItem(
             EXAM_GATE_LOCAL_KEY,
@@ -382,6 +480,7 @@ export async function setExamGateStatusOnline(
               isOpen: finalIsOpen,
               openedAt: json.data.openedAt ?? timestamp,
               passcode: finalPasscode,
+              gateMatrix: finalMatrix,
               source: 'server',
             })
           );
@@ -392,6 +491,7 @@ export async function setExamGateStatusOnline(
           success: true,
           isOpen: finalIsOpen,
           passcode: finalPasscode,
+          gateMatrix: finalMatrix,
           source: 'server',
         };
       }
@@ -403,8 +503,9 @@ export async function setExamGateStatusOnline(
   // Fallback: If server is unreachable on Vercel, local cache still successfully updated!
   return {
     success: true,
-    isOpen,
+    isOpen: calculatedIsOpen,
     passcode,
+    gateMatrix: currentMatrix,
     source: 'cache',
   };
 }
@@ -487,8 +588,16 @@ export async function verifyEmergencyGatePasscodeOnline(
  */
 export async function authenticateParticipantOnline(
   nameOrEmail: string,
-  password: string
-): Promise<{ success: boolean; participant?: RegisteredParticipant; isExamGateOpen?: boolean; error?: string }> {
+  password: string,
+  category?: OlympiadCategory | null,
+  stage?: CompetitionStage | null
+): Promise<{
+  success: boolean;
+  participant?: RegisteredParticipant;
+  isExamGateOpen?: boolean;
+  gateMatrix?: ExamGateMatrix;
+  error?: string;
+}> {
   const cleanInput = String(nameOrEmail || '').trim();
   const cleanPassword = String(password || '').trim();
 
@@ -500,7 +609,12 @@ export async function authenticateParticipantOnline(
     const res = await fetch('/api/authenticate-participant', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fullName: cleanInput, password: cleanPassword }),
+      body: JSON.stringify({
+        fullName: cleanInput,
+        password: cleanPassword,
+        category: category || undefined,
+        stage: stage || undefined,
+      }),
     });
     const data = await res.json();
     if (res.ok && data.success && data.participant) {
@@ -508,6 +622,7 @@ export async function authenticateParticipantOnline(
         success: true,
         participant: data.participant,
         isExamGateOpen: data.isExamGateOpen ?? false,
+        gateMatrix: data.gateMatrix,
       };
     } else if (data && data.error) {
       return { success: false, error: data.error };
@@ -517,9 +632,25 @@ export async function authenticateParticipantOnline(
   }
 
   const localAuth = authenticateParticipant(cleanInput, cleanPassword);
+  let localGateOpen = false;
+  try {
+    const cached = localStorage.getItem(EXAM_GATE_LOCAL_KEY);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed.isOpen) {
+        localGateOpen = true;
+      } else if (category && stage && parsed.gateMatrix) {
+        const key = `${category}_${stage}` as keyof ExamGateMatrix;
+        localGateOpen = Boolean(parsed.gateMatrix[key]);
+      }
+    }
+  } catch {
+    // ignore
+  }
+
   return {
     ...localAuth,
-    isExamGateOpen: false,
+    isExamGateOpen: localGateOpen,
   };
 }
 
