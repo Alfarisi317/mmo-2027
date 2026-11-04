@@ -158,6 +158,40 @@ export const ApiService = {
     return null;
   },
 
+  async updateQuestion(id: string, data: Partial<Question>): Promise<Question[] | null> {
+    try {
+      const res = await fetch(`/api/questions/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          return json.data;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  },
+
+  async scrubQuestions(): Promise<Question[] | null> {
+    try {
+      const res = await fetch('/api/questions/scrub', { method: 'POST' });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          return json.data;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  },
+
   async resetQuestions(): Promise<Question[] | null> {
     try {
       const res = await fetch('/api/questions/reset', { method: 'POST' });

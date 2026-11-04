@@ -145,6 +145,35 @@ export const WordImporter: React.FC<WordImporterProps> = ({
     setParsedQuestions((prev) => prev.filter((_, idx) => idx !== indexToDelete));
   };
 
+  const handleCleanAllImported = () => {
+    setParsedQuestions((prev) =>
+      prev.map((q) => {
+        const cleanStr = (s?: string) => {
+          if (!s) return '';
+          return s
+            .replace(/\$([a-zA-Z])\$\s*\1(?![a-zA-Z0-9])/gi, '$$$1$$ ')
+            .replace(/\$([0-9]+)\$\s*\1(?![0-9])/g, '$$$1$$')
+            .replace(/^([a-zA-Z])\1\s+/gm, '$1 ')
+            .replace(/\b([a-zA-Z])\1(?=\s+(?:kelipatan|berturut|adalah|faktor|merupakan|bilangan|positif|bulat|pecahan|ganjil|genap|prima|\+|\-|\*|\/|=|<|>|≤|≥))/gi, '$1')
+            .replace(/[ \t]+/g, ' ')
+            .replace(/\s+([.,;:?!])/g, '$1')
+            .trim();
+        };
+
+        return {
+          ...q,
+          text: cleanStr(q.text),
+          formulaLatex: '', // suppress duplicate formula block
+          options: q.options?.map((opt) => ({
+            ...opt,
+            text: cleanStr(opt.text),
+          })),
+          explanation: cleanStr(q.explanation || ''),
+        };
+      })
+    );
+  };
+
   const handleUpdateQuestionField = (index: number, field: keyof Question, value: any) => {
     setParsedQuestions((prev) => {
       const copy = [...prev];
@@ -244,17 +273,42 @@ Pembahasan: Gunakan prinsip inklusi-eksklusi. Banyak kelipatan 3: floor(999/3) =
         <div className="p-5 sm:p-7 overflow-y-auto flex-1 space-y-6">
           {/* Error Banner */}
           {errorMessage && (
-            <div className="bg-rose-50 border border-rose-200 rounded-2xl p-3.5 flex items-start gap-3 text-rose-900 text-xs">
-              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <span className="font-bold">Gagal Memproses:</span> {errorMessage}
+            <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-rose-900 text-xs shadow-xs">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <span className="font-bold">Kendala Pemrosesan:</span>{' '}
+                  {(() => {
+                    if (typeof errorMessage === 'string' && errorMessage.trim().startsWith('{') && errorMessage.includes('"message"')) {
+                      try {
+                        const parsed = JSON.parse(errorMessage);
+                        return parsed?.error?.message || errorMessage;
+                      } catch {
+                        return errorMessage;
+                      }
+                    }
+                    return errorMessage;
+                  })()}
+                </div>
               </div>
-              <button
-                onClick={() => setErrorMessage(null)}
-                className="text-rose-500 hover:text-rose-700 text-xs font-semibold"
-              >
-                Tutup
-              </button>
+              <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                {selectedFile && !isLoading && (
+                  <button
+                    type="button"
+                    onClick={handleProcessFile}
+                    className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-2xs"
+                  >
+                    Coba Proses Ulang
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setErrorMessage(null)}
+                  className="px-2.5 py-1.5 text-rose-600 hover:text-rose-800 text-xs font-semibold cursor-pointer"
+                >
+                  Tutup
+                </button>
+              </div>
             </div>
           )}
 
@@ -404,13 +458,13 @@ Pembahasan: Gunakan prinsip inklusi-eksklusi. Banyak kelipatan 3: floor(999/3) =
               <div className="max-w-md mx-auto space-y-2">
                 <h4 className="text-base font-bold text-zinc-900">
                   {loadingStep === 1
-                    ? '1. Mengekstrak Teks Naskah Word (.docx)...'
+                    ? '1. Mengekstrak Naskah & Rumus Word (.docx)...'
                     : loadingStep === 2
-                    ? '2. Membedah Nomor Soal & Kunci dengan Google Gemini AI...'
-                    : '3. Mengonversi Simbol & Rumus Matematika ke KaTeX LaTeX ($...$)...'}
+                    ? '2. Membedah Nomor Soal, Opsi & Kunci Jawaban...'
+                    : '3. Memvalidasi Format Rumus KaTeX LaTeX ($...$)...'}
                 </h4>
                 <p className="text-xs text-zinc-500 leading-relaxed">
-                  Mohon tunggu beberapa detik. Sistem sedang mengekstrak butir soal, menganalisis opsi jawaban, dan memastikan format KaTeX LaTeX siap dirender.
+                  Mohon tunggu beberapa saat. Sistem sedang mengekstrak butir soal, menganalisis nomor dan opsi jawaban, serta memastikan format KaTeX LaTeX siap dirender.
                 </p>
               </div>
 
@@ -423,7 +477,7 @@ Pembahasan: Gunakan prinsip inklusi-eksklusi. Banyak kelipatan 3: floor(999/3) =
                     <RefreshCw className="w-4 h-4 text-zinc-400 animate-spin shrink-0" />
                   )}
                   <span className={loadingStep >= 1 ? 'text-zinc-900 font-semibold' : 'text-zinc-400'}>
-                    Ekstraksi berkas Word mammoth
+                    Ekstraksi naskah & persamaan OpenXML
                   </span>
                 </div>
                 <div className="flex items-center gap-2 font-mono">
@@ -433,7 +487,7 @@ Pembahasan: Gunakan prinsip inklusi-eksklusi. Banyak kelipatan 3: floor(999/3) =
                     <RefreshCw className="w-4 h-4 text-zinc-400 animate-spin shrink-0" />
                   )}
                   <span className={loadingStep >= 2 ? 'text-zinc-900 font-semibold' : 'text-zinc-400'}>
-                    Parsing struktur JSON array via Gemini AI
+                    Pemrosesan nomor soal, opsi A–E & pembahasan
                   </span>
                 </div>
                 <div className="flex items-center gap-2 font-mono">
@@ -443,7 +497,7 @@ Pembahasan: Gunakan prinsip inklusi-eksklusi. Banyak kelipatan 3: floor(999/3) =
                     <RefreshCw className="w-4 h-4 text-zinc-400 animate-spin shrink-0" />
                   )}
                   <span className={loadingStep >= 3 ? 'text-zinc-900 font-semibold' : 'text-zinc-400'}>
-                    Konversi rumus KaTeX LaTeX ($...$)
+                    Render formula KaTeX LaTeX ($...$)
                   </span>
                 </div>
               </div>
@@ -469,30 +523,42 @@ Pembahasan: Gunakan prinsip inklusi-eksklusi. Banyak kelipatan 3: floor(999/3) =
                   </div>
                 </div>
 
-                {/* Save Mode Selector (Append vs Replace) */}
-                <div className="flex items-center gap-2 bg-white border border-[#D5D5D5] p-1 rounded-xl text-xs">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setSaveMode('append')}
-                    className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
-                      saveMode === 'append'
-                        ? 'bg-[#646464] text-white shadow-2xs'
-                        : 'text-zinc-600 hover:text-zinc-900'
-                    }`}
+                    onClick={handleCleanAllImported}
+                    className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                    title="Bersihkan duplikasi simbol persamaan KaTeX dan shadow text di seluruh butir soal terimpor"
                   >
-                    Tambahkan ke Bank Soal
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Bersihkan Simbol Dobel</span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setSaveMode('replace')}
-                    className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
-                      saveMode === 'replace'
-                        ? 'bg-rose-700 text-white shadow-2xs'
-                        : 'text-zinc-600 hover:text-zinc-900'
-                    }`}
-                  >
-                    Gantikan Seluruh Soal
-                  </button>
+
+                  {/* Save Mode Selector (Append vs Replace) */}
+                  <div className="flex items-center gap-1 bg-white border border-[#D5D5D5] p-1 rounded-xl text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setSaveMode('append')}
+                      className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                        saveMode === 'append'
+                          ? 'bg-[#646464] text-white shadow-2xs'
+                          : 'text-zinc-600 hover:text-zinc-900'
+                      }`}
+                    >
+                      Tambahkan ke Bank Soal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSaveMode('replace')}
+                      className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                        saveMode === 'replace'
+                          ? 'bg-rose-700 text-white shadow-2xs'
+                          : 'text-zinc-600 hover:text-zinc-900'
+                      }`}
+                    >
+                      Gantikan Seluruh Soal
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -551,8 +617,9 @@ Pembahasan: Gunakan prinsip inklusi-eksklusi. Banyak kelipatan 3: floor(999/3) =
                           <MathRenderer content={q.text} />
                         </div>
 
-                        {/* Optional Formula Preview */}
-                        {q.formulaLatex && (
+                        {/* Optional Formula Preview - only show if formula exists AND not already in question text */}
+                        {q.formulaLatex &&
+                          !q.text.replace(/\s+/g, '').includes(q.formulaLatex.replace(/\s+/g, '')) && (
                           <div className="bg-[#f7f7f8] border border-[#D5D5D5] rounded-xl p-2.5 text-center text-xs overflow-x-auto">
                             <MathRenderer content={`$$${q.formulaLatex}$$`} />
                           </div>

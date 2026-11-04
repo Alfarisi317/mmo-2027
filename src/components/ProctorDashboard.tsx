@@ -40,8 +40,10 @@ import {
   ClipboardPaste,
   ShieldOff,
   FileText,
+  Edit3,
 } from 'lucide-react';
 import { WordImporter } from './WordImporter';
+import { QuickQuestionModal } from './QuickQuestionModal';
 import { INITIAL_MOCK_PARTICIPANTS } from '../data/mockParticipants';
 import { ApiService } from '../services/api';
 import { ShareExamLinkModal } from './ShareExamLinkModal';
@@ -388,6 +390,79 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
     'Pola barisan adalah bilangan kuadrat $n^2$. Selisih $10^2 - 9^2 = 100 - 81 = 19$. Menggunakan identitas $(n+1)^2 - n^2 = 2n + 1 = 2(9) + 1 = 19$.'
   );
   const [questionSavedNotification, setQuestionSavedNotification] = useState<string | null>(null);
+
+  // Quick Question Modal State (Edit & Create)
+  const [showQuickQuestionModal, setShowQuickQuestionModal] = useState<boolean>(false);
+  const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
+  const [scrubNotice, setScrubNotice] = useState<string | null>(null);
+  const [isScrubbing, setIsScrubbing] = useState<boolean>(false);
+
+  const handleOpenAddQuickQuestion = () => {
+    setEditingQuestion(null);
+    setShowQuickQuestionModal(true);
+  };
+
+  const handleOpenEditQuickQuestion = (q: Question) => {
+    setEditingQuestion(q);
+    setShowQuickQuestionModal(true);
+  };
+
+  const handleSaveQuickQuestion = async (savedQuestion: Question) => {
+    let updatedList: Question[];
+    if (editingQuestion) {
+      // Update existing
+      updatedList = questionsList.map((q) => (q.id === savedQuestion.id ? savedQuestion : q));
+      setQuestionsList(updatedList);
+      await ApiService.updateQuestion(savedQuestion.id, savedQuestion);
+      setQuestionSavedNotification(`Soal nomor #${savedQuestion.questionNumber} berhasil diperbarui!`);
+    } else {
+      // Add new
+      updatedList = [savedQuestion, ...questionsList];
+      setQuestionsList(updatedList);
+      await ApiService.addQuestion(savedQuestion);
+      setQuestionSavedNotification(`Soal baru nomor #${savedQuestion.questionNumber} berhasil ditambahkan!`);
+    }
+
+    try {
+      localStorage.setItem('mmo_questions_data', JSON.stringify(updatedList));
+      localStorage.setItem('mmo_bank_soal', JSON.stringify(updatedList));
+    } catch {
+      // ignore
+    }
+
+    if (externalOnUpdateAllQuestions) {
+      externalOnUpdateAllQuestions(updatedList);
+    }
+    setTimeout(() => setQuestionSavedNotification(null), 4000);
+  };
+
+  const handleBatchScrubAllQuestions = async () => {
+    setIsScrubbing(true);
+    try {
+      const scrubbed = await ApiService.scrubQuestions();
+      if (scrubbed && Array.isArray(scrubbed)) {
+        setQuestionsList(scrubbed);
+        if (externalOnUpdateAllQuestions) {
+          externalOnUpdateAllQuestions(scrubbed);
+        }
+        try {
+          localStorage.setItem('mmo_questions_data', JSON.stringify(scrubbed));
+          localStorage.setItem('mmo_bank_soal', JSON.stringify(scrubbed));
+        } catch {
+          // ignore
+        }
+        setScrubNotice(`Berhasil membersihkan duplikasi simbol KaTeX & shadow equations di seluruh ${scrubbed.length} butir soal!`);
+      } else {
+        setScrubNotice('Pembersihan duplikasi selesai.');
+      }
+    } catch (err) {
+      console.warn('Scrub questions error:', err);
+      setScrubNotice('Terjadi kesalahan saat membersihkan bank soal.');
+    } finally {
+      setIsScrubbing(false);
+      setTimeout(() => setScrubNotice(null), 5000);
+    }
+  };
 
   // Question bank view filters
   const [qbCategoryFilter, setQbCategoryFilter] = useState<'ALL' | OlympiadCategory>('ALL');
@@ -3648,14 +3723,33 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleOpenAddQuickQuestion}
+                  className="px-3 py-1.5 rounded-xl bg-[#646464] hover:bg-[#525252] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs border border-[#646464]"
+                  title="Buka formulir input cepat butir soal dengan pratinjau KaTeX langsung"
+                >
+                  <PlusCircle className="w-3.5 h-3.5 text-emerald-300" />
+                  <span>Tambah Soal Cepat</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBatchScrubAllQuestions}
+                  disabled={isScrubbing}
+                  className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-xs font-semibold text-amber-900 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                  title="Bersihkan duplikasi simbol persamaan KaTeX dan shadow text di seluruh bank soal"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                  <span>{isScrubbing ? 'Membersihkan...' : 'Bersihkan Simbol Dobel'}</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => setShowWordImporterModal(true)}
-                  className="px-3 py-1.5 rounded-xl bg-[#646464] hover:bg-[#525252] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs border border-[#646464]"
+                  className="px-3 py-1.5 rounded-xl bg-white hover:bg-zinc-100 border border-[#D5D5D5] text-zinc-700 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
                   title="Impor naskah soal dari berkas Word (.docx) dengan konversi KaTeX"
                 >
-                  <FileText className="w-3.5 h-3.5 text-amber-300" />
+                  <FileText className="w-3.5 h-3.5 text-amber-500" />
                   <span>Impor Word (.docx)</span>
                 </button>
                 <button
@@ -3665,10 +3759,26 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
                   title="Kembalikan butir soal ke standar resmi MMO 2027"
                 >
                   <RotateCcw className="w-3.5 h-3.5 text-zinc-500" />
-                  Reset ke Standar Resmi
+                  <span>Reset</span>
                 </button>
               </div>
             </div>
+
+            {scrubNotice && (
+              <div className="bg-emerald-50 border border-emerald-300 rounded-2xl p-3 flex items-center justify-between gap-3 text-xs text-emerald-900 shadow-xs">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="font-semibold">{scrubNotice}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setScrubNotice(null)}
+                  className="text-emerald-700 hover:text-emerald-950 font-bold cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
 
             {/* Filter Bar */}
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -3823,14 +3933,23 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
                         </span>
                       </div>
 
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
                         <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
                           Kunci: {q.correctAnswer}
                         </span>
                         <button
                           type="button"
+                          onClick={() => handleOpenEditQuickQuestion(q)}
+                          className="px-2.5 py-1 rounded-xl bg-zinc-100 hover:bg-[#646464] hover:text-white border border-[#D5D5D5] text-zinc-700 transition-all cursor-pointer flex items-center gap-1 font-semibold text-[11px] shadow-2xs"
+                          title="Edit cepat butir soal ini (teks, rumus, pilihan, pembahasan)"
+                        >
+                          <Edit3 className="w-3 h-3" />
+                          <span>Edit Cepat</span>
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => handleDeleteQuestion(q.id)}
-                          className="p-1.5 rounded-lg text-zinc-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                          className="p-1 rounded-lg text-zinc-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                           title="Hapus butir soal"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -4297,6 +4416,18 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
         onClose={() => setShowWordImporterModal(false)}
         onQuestionsImported={handleQuestionsImportedFromWord}
         initialCategory={qbCategoryFilter === 'SMP' ? 'SMP' : 'SMA'}
+      />
+
+      {/* Quick Question Modal (Edit Cepat & Tambah Soal) */}
+      <QuickQuestionModal
+        isOpen={showQuickQuestionModal}
+        onClose={() => {
+          setShowQuickQuestionModal(false);
+          setEditingQuestion(null);
+        }}
+        question={editingQuestion}
+        onSave={handleSaveQuickQuestion}
+        defaultCategory={qbCategoryFilter === 'SMP' ? 'SMP' : 'SMA'}
       />
     </div>
   );
