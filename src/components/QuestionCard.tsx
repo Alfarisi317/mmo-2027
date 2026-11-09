@@ -64,6 +64,17 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
           <MathRenderer content={question.text} />
         </div>
 
+        {/* Optional Question Diagram / Screenshot (Win+Shift+S) */}
+        {question.imageUrl && (
+          <div className="mb-6 rounded-2xl overflow-hidden border border-[#D5D5D5] bg-[#fafafa] p-2 flex justify-center max-w-xl mx-auto shadow-2xs">
+            <img
+              src={question.imageUrl}
+              alt={`Ilustrasi Soal ${questionIndex + 1}`}
+              className="max-h-72 w-auto object-contain rounded-xl"
+            />
+          </div>
+        )}
+
         {/* Multiple Choice Options List */}
         {!isShortAnswer && question.options && question.options.length > 0 && (
           <div className="space-y-3 mb-8">

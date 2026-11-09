@@ -341,7 +341,7 @@ export const ApiService = {
   async uploadWordQuestions(
     file: File,
     category: OlympiadCategory = 'SMA'
-  ): Promise<{ success: boolean; count?: number; questions?: Question[]; error?: string }> {
+  ): Promise<{ success: boolean; count?: number; questions?: Question[]; error?: string; fallbackUsed?: boolean }> {
     try {
       const formData = new FormData();
       formData.append('file', file);
@@ -358,6 +358,27 @@ export const ApiService = {
       return {
         success: false,
         error: err?.message || 'Gagal mengunggah berkas Word ke server.',
+      };
+    }
+  },
+
+  // Parse questions directly from raw copied text (Word / clipboard) with 0 quota
+  async parseTextQuestions(
+    text: string,
+    category: OlympiadCategory = 'SMA'
+  ): Promise<{ success: boolean; count?: number; questions?: Question[]; error?: string }> {
+    try {
+      const res = await fetch('/api/admin/parse-text-questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, category }),
+      });
+      const json = await res.json();
+      return json;
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err?.message || 'Gagal memproses teks soal.',
       };
     }
   },

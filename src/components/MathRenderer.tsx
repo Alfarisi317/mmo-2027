@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import katex from 'katex';
+import { sanitizeMathString } from '../utils/mathSanitizer';
 
 interface MathRendererProps {
   content: string;
@@ -12,32 +13,38 @@ export const MathRenderer: React.FC<MathRendererProps> = ({
   className = '',
   inline = false,
 }) => {
-  const renderedHtml = useMemo(() => {
-    if (!content) return '';
+  const cleanContent = useMemo(() => sanitizeMathString(content), [content]);
 
-    // If the entire content is a pure latex formula
-    if (inline) {
+  const renderedHtml = useMemo(() => {
+    if (!cleanContent) return '';
+
+    // If content is purely a single wrapped math formula, e.g. "$x^2$" or "$\frac{a}{b}$"
+    if (
+      cleanContent.startsWith('$') &&
+      cleanContent.endsWith('$') &&
+      !cleanContent.slice(1, -1).includes('$')
+    ) {
       try {
-        return katex.renderToString(content, {
+        const rawMath = cleanContent.slice(1, -1).trim();
+        return katex.renderToString(rawMath, {
           displayMode: false,
           throwOnError: false,
         });
       } catch (err) {
-        return content;
+        return escapeHtml(cleanContent);
       }
     }
 
     // Split text by display math ($$...$$) and inline math ($...$)
-    // Regex matches $$...$$ or $...$
     const parts: string[] = [];
     const regex = /(\$\$[\s\S]*?\$\$|\$[^\$\n]+?\$)/g;
     let lastIndex = 0;
     let match: RegExpExecArray | null;
 
-    while ((match = regex.exec(content)) !== null) {
+    while ((match = regex.exec(cleanContent)) !== null) {
       // Text before match
       if (match.index > lastIndex) {
-        parts.push(escapeHtml(content.substring(lastIndex, match.index)));
+        parts.push(escapeHtml(cleanContent.substring(lastIndex, match.index)));
       }
 
       const formula = match[0];
@@ -53,20 +60,24 @@ export const MathRenderer: React.FC<MathRendererProps> = ({
         });
         parts.push(rendered);
       } catch (err) {
-        parts.push(`<span class="font-mono text-amber-300">${escapeHtml(rawMath)}</span>`);
+        parts.push(`<span class="font-mono text-zinc-800">${escapeHtml(rawMath)}</span>`);
       }
 
       lastIndex = regex.lastIndex;
     }
 
     // Remaining text
-    if (lastIndex < content.length) {
-      parts.push(escapeHtml(content.substring(lastIndex)));
+    if (lastIndex < cleanContent.length) {
+      parts.push(escapeHtml(cleanContent.substring(lastIndex)));
+    }
+
+    if (inline) {
+      return parts.join('');
     }
 
     // Convert newlines to breaks for regular text
     return parts.join('').replace(/\n/g, '<br />');
-  }, [content, inline]);
+  }, [cleanContent, inline]);
 
   return (
     <span

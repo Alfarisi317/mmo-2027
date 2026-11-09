@@ -23,6 +23,7 @@ export interface Question {
   focus?: QuestionFocus;
   text: string;
   formulaLatex?: string;
+  imageUrl?: string; // Optional screenshot/diagram image (e.g. from Win+Shift+S snipping tool)
   options?: QuestionOption[];
   correctAnswer: string;
   explanation: string;

@@ -15,11 +15,16 @@ import {
   Check,
   RefreshCw,
   BookOpen,
-  Code2,
+  ClipboardList,
+  Image as ImageIcon,
+  Copy,
+  Camera,
+  Eye,
 } from 'lucide-react';
 import { Question, OlympiadCategory, MathDomain } from '../types';
 import { MathRenderer } from './MathRenderer';
 import { ApiService } from '../services/api';
+import { sanitizeMathString, sanitizeQuestionsList } from '../utils/mathSanitizer';
 
 interface WordImporterProps {
   isOpen: boolean;
@@ -28,18 +33,28 @@ interface WordImporterProps {
   initialCategory?: OlympiadCategory;
 }
 
+// Convert linear fractions, clean shadows, and format powers & exponents beautifully
+function cleanAndBeautifyMathText(raw: string): string {
+  return sanitizeMathString(raw);
+}
+
 export const WordImporter: React.FC<WordImporterProps> = ({
   isOpen,
   onClose,
   onQuestionsImported,
-  initialCategory = 'SMA',
+  initialCategory = 'SMP',
 }) => {
+  // Tabs: Smart Paste (default, zero quota) vs File Upload (.docx)
+  const [activeTab, setActiveTab] = useState<'smart_paste' | 'file_upload'>('smart_paste');
+
+  const [pastedText, setPastedText] = useState<string>('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [targetCategory, setTargetCategory] = useState<OlympiadCategory>(initialCategory);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [loadingStep, setLoadingStep] = useState<number>(1);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successInfo, setSuccessInfo] = useState<string | null>(null);
 
   // Preview state
   const [parsedQuestions, setParsedQuestions] = useState<Question[]>([]);
@@ -47,7 +62,11 @@ export const WordImporter: React.FC<WordImporterProps> = ({
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
+  // Screenshot upload per-question
+  const [screenshotTargetIndex, setScreenshotTargetIndex] = useState<number | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const imageUploadRef = useRef<HTMLInputElement | null>(null);
 
   if (!isOpen) return null;
 
@@ -74,6 +93,7 @@ export const WordImporter: React.FC<WordImporterProps> = ({
 
   const validateAndSetFile = (file?: File) => {
     setErrorMessage(null);
+    setSuccessInfo(null);
     if (!file) return;
 
     if (!file.name.toLowerCase().endsWith('.docx')) {
@@ -91,30 +111,92 @@ export const WordImporter: React.FC<WordImporterProps> = ({
     setSelectedFile(file);
   };
 
+  // Process text pasted directly from Word (Zero AI Quota, Instant & Robust)
+  const handleProcessPastedText = async () => {
+    if (!pastedText.trim()) {
+      setErrorMessage('Silakan tempel (paste) naskah soal dari Word terlebih dahulu ke dalam kolom teks.');
+      return;
+    }
+
+    setIsLoading(true);
+    setErrorMessage(null);
+    setSuccessInfo(null);
+
+    try {
+      const cleaned = cleanAndBeautifyMathText(pastedText);
+      const result = await ApiService.parseTextQuestions(cleaned, targetCategory);
+
+      if (result.success && Array.isArray(result.questions) && result.questions.length > 0) {
+        setParsedQuestions(result.questions);
+        setSuccessInfo(`Berhasil membedah ${result.questions.length} butir soal dengan rumus tegak KaTeX!`);
+      } else {
+        setErrorMessage(
+          result.error ||
+            'Tidak dapat mendeteksi butir soal. Pastikan naskah memiliki format nomor ("1. ") dan opsi jawaban ("A. ", "B. ", dst).'
+        );
+      }
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Terjadi gangguan jaringan saat memproses naskah teks.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fill sample Olympiad text for quick testing
+  const handleFillSample = () => {
+    const sample = `1. Diketahui pecahan 2013/7000. Tentukan angka desimal ke-2013 di belakang koma dari bentuk desimal pecahan tersebut.
+A. 1
+B. 4
+C. 2
+D. 8
+E. 5
+Kunci: D
+Pembahasan: Ubah 2013/7000 = (2013 ÷ 7) ÷ 1000. 2013 ÷ 7 = 287,571428... dengan pola 6 angka berulang: 571428. Posisi angka ke-2013 di belakang koma setelah pergeseran 3 angka adalah: (2013 - 3) = 2010. 2010 ÷ 6 = 335 sisa 0. Sisa 0 berarti angka ke-6 dari pola yaitu 8.
+
+2. Diketahui FPB dan KPK dari bilangan 72 dan x berturut-turut adalah 3 dan 1800. Pernyataan berikut yang benar adalah ...
+A. x kelipatan 5
+B. x kelipatan 72
+C. x adalah genap
+D. x adalah faktor dari 3
+E. x kelipatan 7
+Kunci: A
+Pembahasan: Hubungan FPB dan KPK dua bilangan: 72 × x = FPB(72, x) × KPK(72, x) = 3 × 1800 = 5400. Maka x = 5400 / 72 = 75. Karena x = 75 = 5 × 15, maka x adalah kelipatan 5.`;
+
+    setPastedText(sample);
+  };
+
   const handleProcessFile = async () => {
     if (!selectedFile) return;
 
     setIsLoading(true);
     setErrorMessage(null);
+    setSuccessInfo(null);
     setLoadingStep(1);
 
-    // Simulated progress steps for better user feedback
-    const stepTimer1 = setTimeout(() => setLoadingStep(2), 1200);
-    const stepTimer2 = setTimeout(() => setLoadingStep(3), 3200);
+    const stepTimer1 = setTimeout(() => setLoadingStep(2), 1000);
+    const stepTimer2 = setTimeout(() => setLoadingStep(3), 2500);
 
     try {
       const result = await ApiService.uploadWordQuestions(selectedFile, targetCategory);
 
       if (result.success && Array.isArray(result.questions) && result.questions.length > 0) {
         setParsedQuestions(result.questions);
+        if (result.fallbackUsed) {
+          setSuccessInfo(
+            `Berhasil membedah ${result.questions.length} butir soal menggunakan mesin parsing cepat tanpa kuota AI!`
+          );
+        }
       } else {
         setErrorMessage(
           result.error ||
-            'AI tidak berhasil menemukan naskah soal matematika yang dapat dikenali. Pastikan berkas .docx memuat nomor soal dan opsi jawaban yang jelas.'
+            'Tidak berhasil membedah soal dari berkas Word. Gunakan tab "Tempel Teks Cerdas" di samping untuk menempelkan naskah langsung dari Word.'
         );
       }
     } catch (err: any) {
-      setErrorMessage(err?.message || 'Terjadi gangguan jaringan saat menghubungi server pemroses Word.');
+      setErrorMessage(
+        err?.message ||
+          'Terjadi kendala saat memproses berkas Word. Anda dapat menyalin teks soal langsung ke tab "Tempel Teks Cerdas".'
+      );
     } finally {
       clearTimeout(stepTimer1);
       clearTimeout(stepTimer2);
@@ -147,31 +229,19 @@ export const WordImporter: React.FC<WordImporterProps> = ({
 
   const handleCleanAllImported = () => {
     setParsedQuestions((prev) =>
-      prev.map((q) => {
-        const cleanStr = (s?: string) => {
-          if (!s) return '';
-          return s
-            .replace(/\$([a-zA-Z])\$\s*\1(?![a-zA-Z0-9])/gi, '$$$1$$ ')
-            .replace(/\$([0-9]+)\$\s*\1(?![0-9])/g, '$$$1$$')
-            .replace(/^([a-zA-Z])\1\s+/gm, '$1 ')
-            .replace(/\b([a-zA-Z])\1(?=\s+(?:kelipatan|berturut|adalah|faktor|merupakan|bilangan|positif|bulat|pecahan|ganjil|genap|prima|\+|\-|\*|\/|=|<|>|≤|≥))/gi, '$1')
-            .replace(/[ \t]+/g, ' ')
-            .replace(/\s+([.,;:?!])/g, '$1')
-            .trim();
-        };
-
-        return {
-          ...q,
-          text: cleanStr(q.text),
-          formulaLatex: '', // suppress duplicate formula block
-          options: q.options?.map((opt) => ({
-            ...opt,
-            text: cleanStr(opt.text),
-          })),
-          explanation: cleanStr(q.explanation || ''),
-        };
-      })
+      prev.map((q) => ({
+        ...q,
+        text: cleanAndBeautifyMathText(q.text),
+        formulaLatex: '', // suppress duplicate formula block
+        options: q.options?.map((opt) => ({
+          ...opt,
+          text: cleanAndBeautifyMathText(opt.text),
+        })),
+        explanation: cleanAndBeautifyMathText(q.explanation || ''),
+      }))
     );
+    setSuccessInfo('Seluruh duplikasi simbol KaTeX dan pecahan telah dirapikan!');
+    setTimeout(() => setSuccessInfo(null), 3000);
   };
 
   const handleUpdateQuestionField = (index: number, field: keyof Question, value: any) => {
@@ -182,57 +252,34 @@ export const WordImporter: React.FC<WordImporterProps> = ({
     });
   };
 
-  const handleDownloadSampleText = () => {
-    const sampleGuide = `CONTOH FORMAT PENULISAN NASKAH SOAL MATEMATIKA MMO 2027 (.DOCX)
-===================================================================
+  // Image / Screenshot Upload & Paste handling for individual questions
+  const handleAttachImageToQuestion = (index: number, file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('Berkas harus berupa gambar (PNG, JPG, WebP).');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (typeof e.target?.result === 'string') {
+        handleUpdateQuestionField(index, 'imageUrl', e.target.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
-Petunjuk Panitia:
-- Simpan dokumen dalam format Microsoft Word (.docx).
-- Rumus matematika dapat ditulis menggunakan simbol biasa (contoh: x^2 - 4x + 3 = 0, sqrt(2), a/b) atau persamaan Word. AI otomatis mengonversi ke KaTeX LaTeX ($...$).
-- Tuliskan nomor soal, diikuti teks soal.
-- Tuliskan opsi A, B, C, D, E pada baris terpisah atau urut.
-- Sertakan "Kunci: [A/B/C/D/E]" dan "Pembahasan: [...]" di bawah setiap nomor soal (opsional, jika tidak ada AI akan menghitung kunci yang benar).
-
--------------------------------------------------------------------
-CONTOH BUTIR SOAL 1:
-1. Diketahui fungsi kuadrat f(x) = x^2 - 6x + 8. Nilai minimum dari fungsi f(x) adalah...
-A. -2
-B. -1
-C. 0
-D. 1
-E. 8
-Kunci: B
-Pembahasan: Sumbu simetri x = -b/(2a) = -(-6)/(2*1) = 3. Nilai minimum f(3) = 3^2 - 6(3) + 8 = 9 - 18 + 8 = -1.
-
-CONTOH BUTIR SOAL 2 (GEOMETRI):
-2. Pada segitiga ABC siku-siku di B, panjang sisi AB = 6 cm dan BC = 8 cm. Jika D adalah titik tengah AC, maka panjang ruas garis BD adalah...
-A. 4 cm
-B. 5 cm
-C. 7 cm
-D. 10 cm
-E. 12 cm
-Kunci: B
-Pembahasan: Panjang sisi miring AC = sqrt(6^2 + 8^2) = 10 cm. Ruas garis berat dari sudut siku-siku BD = 1/2 * AC = 5 cm.
-
-CONTOH BUTIR SOAL 3 (KOMBINATORIKA & TEORI BILANGAN):
-3. Banyaknya bilangan bulat positif n < 1000 sehingga n habis dibagi 3 atau 5 tetapi tidak habis dibagi 15 adalah...
-A. 400
-B. 466
-C. 533
-D. 399
-E. 467
-Kunci: D
-Pembahasan: Gunakan prinsip inklusi-eksklusi. Banyak kelipatan 3: floor(999/3) = 333. Banyak kelipatan 5: floor(999/5) = 199. Kelipatan 15: floor(999/15) = 66. Total = 333 + 199 - 2*(66) = 400.
-===================================================================
-`;
-
-    const blob = new Blob([sampleGuide], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Panduan_Format_Naskah_Soal_MMO_2027.txt`;
-    link.click();
-    URL.revokeObjectURL(url);
+  const handlePasteScreenshotOnQuestion = (index: number, e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const file = items[i].getAsFile();
+        if (file) {
+          handleAttachImageToQuestion(index, file);
+          break;
+        }
+      }
+    }
   };
 
   return (
@@ -247,15 +294,15 @@ Pembahasan: Gunakan prinsip inklusi-eksklusi. Banyak kelipatan 3: floor(999/3) =
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-sm sm:text-base font-bold text-zinc-900">
-                  Impor Soal dari Microsoft Word (.docx)
+                  Input & Impor Naskah Soal Word
                 </h3>
-                <span className="bg-amber-100 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
-                  <Sparkles className="w-3 h-3 text-amber-600" />
-                  AI KaTeX LaTeX
+                <span className="bg-emerald-100 text-emerald-900 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
+                  <Sparkles className="w-3 h-3 text-emerald-600" />
+                  Bebas Kuota · KaTeX Tegak
                 </span>
               </div>
               <p className="text-[11px] sm:text-xs text-zinc-500">
-                Ekstrak naskah soal Word dan ubah otomatis semua rumus & simbol matematika ke KaTeX ($...$).
+                Pilih metode input: tempel teks langsung dari Word atau unggah berkas .docx dengan render KaTeX rapi.
               </p>
             </div>
           </div>
@@ -269,36 +316,86 @@ Pembahasan: Gunakan prinsip inklusi-eksklusi. Banyak kelipatan 3: floor(999/3) =
           </button>
         </div>
 
+        {/* Tab Selector (When not viewing parsed questions) */}
+        {parsedQuestions.length === 0 && !isLoading && (
+          <div className="px-5 sm:px-7 pt-3 bg-white border-b border-[#D5D5D5] flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('smart_paste');
+                  setErrorMessage(null);
+                }}
+                className={`py-2 px-3 sm:px-4 rounded-t-xl text-xs font-bold border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
+                  activeTab === 'smart_paste'
+                    ? 'border-[#646464] text-zinc-900 bg-zinc-50 shadow-2xs'
+                    : 'border-transparent text-zinc-500 hover:text-zinc-800'
+                }`}
+              >
+                <ClipboardList className="w-4 h-4 text-emerald-600" />
+                <span>Tempel Teks Cerdas (Rekomendasi)</span>
+                <span className="bg-emerald-100 text-emerald-800 text-[9px] font-bold px-1.5 py-0.2 rounded-md">
+                  0 Kuota
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('file_upload');
+                  setErrorMessage(null);
+                }}
+                className={`py-2 px-3 sm:px-4 rounded-t-xl text-xs font-bold border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
+                  activeTab === 'file_upload'
+                    ? 'border-[#646464] text-zinc-900 bg-zinc-50 shadow-2xs'
+                    : 'border-transparent text-zinc-500 hover:text-zinc-800'
+                }`}
+              >
+                <UploadCloud className="w-4 h-4 text-[#646464]" />
+                <span>Unggah Berkas .docx</span>
+              </button>
+            </div>
+
+            <span className="text-[11px] text-zinc-500 font-medium hidden sm:inline">
+              Pecahan otomatis dikonversi ke pecahan tegak <code className="font-bold text-[#646464]">$\frac{'{a}{b}'}$</code>
+            </span>
+          </div>
+        )}
+
         {/* Content Body */}
-        <div className="p-5 sm:p-7 overflow-y-auto flex-1 space-y-6">
+        <div className="p-5 sm:p-7 overflow-y-auto flex-1 space-y-5">
+          {/* Success Banner */}
+          {successInfo && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5 flex items-center gap-3 text-emerald-900 text-xs shadow-xs animate-in fade-in">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <div className="flex-1 font-semibold">{successInfo}</div>
+              <button
+                type="button"
+                onClick={() => setSuccessInfo(null)}
+                className="text-emerald-700 hover:text-emerald-900 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           {/* Error Banner */}
           {errorMessage && (
             <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-rose-900 text-xs shadow-xs">
               <div className="flex items-start gap-3">
                 <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <span className="font-bold">Kendala Pemrosesan:</span>{' '}
-                  {(() => {
-                    if (typeof errorMessage === 'string' && errorMessage.trim().startsWith('{') && errorMessage.includes('"message"')) {
-                      try {
-                        const parsed = JSON.parse(errorMessage);
-                        return parsed?.error?.message || errorMessage;
-                      } catch {
-                        return errorMessage;
-                      }
-                    }
-                    return errorMessage;
-                  })()}
+                  <span className="font-bold">Informasi:</span> {errorMessage}
                 </div>
               </div>
               <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
-                {selectedFile && !isLoading && (
+                {activeTab === 'file_upload' && (
                   <button
                     type="button"
-                    onClick={handleProcessFile}
-                    className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-2xs"
+                    onClick={() => setActiveTab('smart_paste')}
+                    className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-900 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-2xs"
                   >
-                    Coba Proses Ulang
+                    Gunakan Tempel Cerdas
                   </button>
                 )}
                 <button
@@ -312,39 +409,139 @@ Pembahasan: Gunakan prinsip inklusi-eksklusi. Banyak kelipatan 3: floor(999/3) =
             </div>
           )}
 
-          {/* STEP 1: Upload & Configuration (When no questions parsed yet and not loading) */}
-          {parsedQuestions.length === 0 && !isLoading && (
-            <div className="space-y-5">
+          {/* STEP 1A: SMART PASTE TAB */}
+          {parsedQuestions.length === 0 && !isLoading && activeTab === 'smart_paste' && (
+            <div className="space-y-4">
               {/* Category Selector */}
-              <div className="bg-[#f7f7f8] border border-[#D5D5D5] rounded-2xl p-4">
-                <label className="block text-xs font-bold text-zinc-900 mb-2">
-                  1. Pilih Kategori Jenjang Soal:
+              <div className="bg-[#f7f7f8] border border-[#D5D5D5] rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <label className="text-xs font-bold text-zinc-900 shrink-0">
+                  Target Jenjang Soal:
                 </label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-2 w-full sm:w-auto">
                   <button
                     type="button"
                     onClick={() => setTargetCategory('SMP')}
-                    className={`py-2.5 px-4 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer border ${
+                    className={`py-1.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition-all cursor-pointer ${
                       targetCategory === 'SMP'
                         ? 'bg-[#646464] text-white border-[#646464] shadow-xs'
                         : 'bg-white text-zinc-700 border-[#D5D5D5] hover:bg-zinc-50'
                     }`}
                   >
-                    <span>Jenjang SMP / MTs</span>
-                    {targetCategory === 'SMP' && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                    <span>Jenjang SMP</span>
+                    {targetCategory === 'SMP' && <Check className="w-3.5 h-3.5" />}
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setTargetCategory('SMA')}
-                    className={`py-2.5 px-4 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer border ${
+                    className={`py-1.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition-all cursor-pointer ${
                       targetCategory === 'SMA'
                         ? 'bg-[#646464] text-white border-[#646464] shadow-xs'
                         : 'bg-white text-zinc-700 border-[#D5D5D5] hover:bg-zinc-50'
                     }`}
                   >
-                    <span>Jenjang SMA / SMK / MA</span>
-                    {targetCategory === 'SMA' && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                    <span>Jenjang SMA</span>
+                    {targetCategory === 'SMA' && <Check className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Textarea for Pasting */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-zinc-800 flex items-center gap-1.5">
+                    <span>Tempel (Paste) Teks Soal dari Word di Sini:</span>
+                    <span className="text-rose-500">*</span>
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={handleFillSample}
+                    className="text-[11px] text-[#646464] hover:text-zinc-900 font-semibold underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <Copy className="w-3 h-3" />
+                    <span>Isi Contoh Naskah Soal</span>
+                  </button>
+                </div>
+
+                <textarea
+                  rows={9}
+                  value={pastedText}
+                  onChange={(e) => setPastedText(e.target.value)}
+                  placeholder={`Contoh format:
+1. Diketahui FPB dan KPK dari bilangan 72 dan x berturut-turut adalah 3 dan 1800. Pernyataan berikut yang benar adalah ...
+A. x kelipatan 5
+B. x kelipatan 72
+C. x adalah genap
+D. x adalah faktor dari 3
+E. x kelipatan 7
+Kunci: A
+Pembahasan: 72 * x = 3 * 1800 = 5400, maka x = 75 (kelipatan 5).`}
+                  className="w-full bg-[#f7f7f8] border border-[#D5D5D5] rounded-2xl p-3.5 text-xs text-zinc-900 font-mono focus:outline-none focus:border-[#646464] leading-relaxed"
+                />
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-zinc-500">
+                  <div className="flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>
+                      Pecahan seperti <code className="bg-zinc-100 px-1 py-0.5 rounded font-bold">2013/7000</code> otomatis diubah menjadi pecahan tegak KaTeX <code className="bg-zinc-100 px-1 py-0.5 rounded font-bold">$\frac{'{2013}{7000}'}$</code>.
+                    </span>
+                  </div>
+                  <span className="font-mono text-zinc-400">
+                    {pastedText.length} karakter
+                  </span>
+                </div>
+              </div>
+
+              {/* Action Button */}
+              <div className="pt-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleProcessPastedText}
+                  disabled={!pastedText.trim()}
+                  className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-[#646464] hover:bg-[#525252] disabled:opacity-50 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-xs transition-all"
+                >
+                  <Sparkles className="w-4 h-4 text-emerald-400" />
+                  <span>Proses & Pratinjau Naskah Soal</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 1B: FILE UPLOAD TAB */}
+          {parsedQuestions.length === 0 && !isLoading && activeTab === 'file_upload' && (
+            <div className="space-y-4">
+              {/* Category Selector */}
+              <div className="bg-[#f7f7f8] border border-[#D5D5D5] rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <label className="text-xs font-bold text-zinc-900 shrink-0">
+                  Target Jenjang Soal:
+                </label>
+                <div className="grid grid-cols-2 gap-2 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={() => setTargetCategory('SMP')}
+                    className={`py-1.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition-all cursor-pointer ${
+                      targetCategory === 'SMP'
+                        ? 'bg-[#646464] text-white border-[#646464] shadow-xs'
+                        : 'bg-white text-zinc-700 border-[#D5D5D5] hover:bg-zinc-50'
+                    }`}
+                  >
+                    <span>Jenjang SMP</span>
+                    {targetCategory === 'SMP' && <Check className="w-3.5 h-3.5" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTargetCategory('SMA')}
+                    className={`py-1.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition-all cursor-pointer ${
+                      targetCategory === 'SMA'
+                        ? 'bg-[#646464] text-white border-[#646464] shadow-xs'
+                        : 'bg-white text-zinc-700 border-[#D5D5D5] hover:bg-zinc-50'
+                    }`}
+                  >
+                    <span>Jenjang SMA</span>
+                    {targetCategory === 'SMA' && <Check className="w-3.5 h-3.5" />}
                   </button>
                 </div>
               </div>
@@ -388,7 +585,7 @@ Pembahasan: Gunakan prinsip inklusi-eksklusi. Banyak kelipatan 3: floor(999/3) =
                       {(selectedFile.size / 1024).toFixed(1)} KB · Berkas Microsoft Word siap diproses
                     </p>
                     <span className="inline-block mt-3 px-3 py-1 bg-white border border-emerald-300 rounded-lg text-[11px] text-emerald-800 font-semibold shadow-2xs">
-                      Klik tombol "Mulai Ekstraksi & Konversi KaTeX" di bawah
+                      Klik tombol "Mulai Ekstraksi Berkas Word" di bawah
                     </span>
                   </div>
                 ) : (
@@ -406,28 +603,6 @@ Pembahasan: Gunakan prinsip inklusi-eksklusi. Banyak kelipatan 3: floor(999/3) =
                 )}
               </div>
 
-              {/* Guidelines & Download Format Template */}
-              <div className="bg-zinc-50 border border-[#D5D5D5] rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
-                <div className="flex items-start gap-2.5">
-                  <HelpCircle className="w-4 h-4 text-[#646464] shrink-0 mt-0.5" />
-                  <div>
-                    <span className="font-bold text-zinc-900 block">Panduan Format Penulisan Naskah Soal:</span>
-                    <p className="text-zinc-600 text-[11px] leading-relaxed">
-                      Tulis nomor soal, teks pertanyaan, opsi A–E, serta Kunci & Pembahasan. AI Gemini otomatis mendeteksi pecahan, eksponen, akar, dan rumus KaTeX.
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleDownloadSampleText}
-                  className="shrink-0 px-3 py-1.5 bg-white hover:bg-zinc-100 border border-[#D5D5D5] text-zinc-800 rounded-xl font-semibold text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-                >
-                  <Download className="w-3.5 h-3.5 text-[#646464]" />
-                  <span>Unduh Contoh Format (.txt)</span>
-                </button>
-              </div>
-
               {/* Action Button */}
               {selectedFile && (
                 <div className="pt-2 flex justify-end">
@@ -437,7 +612,7 @@ Pembahasan: Gunakan prinsip inklusi-eksklusi. Banyak kelipatan 3: floor(999/3) =
                     className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-[#646464] hover:bg-[#525252] text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-xs transition-all"
                   >
                     <Sparkles className="w-4 h-4 text-amber-300" />
-                    <span>Mulai Ekstraksi & Konversi KaTeX AI</span>
+                    <span>Mulai Ekstraksi Berkas Word</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
@@ -445,7 +620,7 @@ Pembahasan: Gunakan prinsip inklusi-eksklusi. Banyak kelipatan 3: floor(999/3) =
             </div>
           )}
 
-          {/* STEP 2: Loading Indicator with Animated Step Progress */}
+          {/* STEP 2: Loading Indicator */}
           {isLoading && (
             <div className="py-12 sm:py-16 text-center space-y-6">
               <div className="relative w-20 h-20 mx-auto">
@@ -458,55 +633,21 @@ Pembahasan: Gunakan prinsip inklusi-eksklusi. Banyak kelipatan 3: floor(999/3) =
               <div className="max-w-md mx-auto space-y-2">
                 <h4 className="text-base font-bold text-zinc-900">
                   {loadingStep === 1
-                    ? '1. Mengekstrak Naskah & Rumus Word (.docx)...'
+                    ? '1. Menyiapkan Naskah & Membedah Butir Soal...'
                     : loadingStep === 2
-                    ? '2. Membedah Nomor Soal, Opsi & Kunci Jawaban...'
-                    : '3. Memvalidasi Format Rumus KaTeX LaTeX ($...$)...'}
+                    ? '2. Mengonversi Notasi Pecahan & Formula KaTeX...'
+                    : '3. Memvalidasi Format Opsi Jawaban & Pembahasan...'}
                 </h4>
                 <p className="text-xs text-zinc-500 leading-relaxed">
-                  Mohon tunggu beberapa saat. Sistem sedang mengekstrak butir soal, menganalisis nomor dan opsi jawaban, serta memastikan format KaTeX LaTeX siap dirender.
+                  Sistem sedang memproses nomor soal, opsi jawaban A–E, dan mengubah pecahan menjadi notasi KaTeX yang rapi.
                 </p>
-              </div>
-
-              {/* Visual Progress Steps */}
-              <div className="max-w-sm mx-auto bg-zinc-50 border border-[#D5D5D5] rounded-2xl p-3 text-left space-y-2 text-xs">
-                <div className="flex items-center gap-2 font-mono">
-                  {loadingStep >= 1 ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  ) : (
-                    <RefreshCw className="w-4 h-4 text-zinc-400 animate-spin shrink-0" />
-                  )}
-                  <span className={loadingStep >= 1 ? 'text-zinc-900 font-semibold' : 'text-zinc-400'}>
-                    Ekstraksi naskah & persamaan OpenXML
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 font-mono">
-                  {loadingStep >= 2 ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  ) : (
-                    <RefreshCw className="w-4 h-4 text-zinc-400 animate-spin shrink-0" />
-                  )}
-                  <span className={loadingStep >= 2 ? 'text-zinc-900 font-semibold' : 'text-zinc-400'}>
-                    Pemrosesan nomor soal, opsi A–E & pembahasan
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 font-mono">
-                  {loadingStep >= 3 ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  ) : (
-                    <RefreshCw className="w-4 h-4 text-zinc-400 animate-spin shrink-0" />
-                  )}
-                  <span className={loadingStep >= 3 ? 'text-zinc-900 font-semibold' : 'text-zinc-400'}>
-                    Render formula KaTeX LaTeX ($...$)
-                  </span>
-                </div>
               </div>
             </div>
           )}
 
           {/* STEP 3: Preview Questions & KaTeX Rendering */}
           {parsedQuestions.length > 0 && !isLoading && (
-            <div className="space-y-5">
+            <div className="space-y-4">
               {/* Summary Bar */}
               <div className="bg-[#f7f7f8] border border-[#D5D5D5] rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
@@ -515,10 +656,10 @@ Pembahasan: Gunakan prinsip inklusi-eksklusi. Banyak kelipatan 3: floor(999/3) =
                   </div>
                   <div>
                     <h4 className="text-xs sm:text-sm font-bold text-zinc-900">
-                      {parsedQuestions.length} Butir Soal Berhasil Dikonversi
+                      {parsedQuestions.length} Butir Soal Siap Diimpor
                     </h4>
                     <p className="text-[11px] text-zinc-500">
-                      Jenjang: <strong className="text-zinc-800">{targetCategory}</strong> · Periksa render rumus KaTeX di bawah sebelum disimpan ke bank soal.
+                      Jenjang: <strong className="text-zinc-800">{targetCategory}</strong> · Rumus KaTeX sudah berformat rapi. Anda juga dapat melampirkan tangkapan layar (SS) jika terdapat grafik/geometri.
                     </p>
                   </div>
                 </div>
@@ -528,13 +669,13 @@ Pembahasan: Gunakan prinsip inklusi-eksklusi. Banyak kelipatan 3: floor(999/3) =
                     type="button"
                     onClick={handleCleanAllImported}
                     className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-                    title="Bersihkan duplikasi simbol persamaan KaTeX dan shadow text di seluruh butir soal terimpor"
+                    title="Bersihkan duplikasi simbol persamaan KaTeX dan shadow text di seluruh butir soal"
                   >
                     <Sparkles className="w-3.5 h-3.5 text-amber-600" />
                     <span>Bersihkan Simbol Dobel</span>
                   </button>
 
-                  {/* Save Mode Selector (Append vs Replace) */}
+                  {/* Save Mode Selector */}
                   <div className="flex items-center gap-1 bg-white border border-[#D5D5D5] p-1 rounded-xl text-xs">
                     <button
                       type="button"
@@ -563,10 +704,11 @@ Pembahasan: Gunakan prinsip inklusi-eksklusi. Banyak kelipatan 3: floor(999/3) =
               </div>
 
               {/* Questions List with KaTeX */}
-              <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-1">
+              <div className="space-y-4 max-h-[52vh] overflow-y-auto pr-1">
                 {parsedQuestions.map((q, idx) => (
                   <div
                     key={q.id || idx}
+                    onPaste={(e) => handlePasteScreenshotOnQuestion(idx, e)}
                     className="bg-white border border-[#D5D5D5] rounded-2xl p-4 sm:p-5 shadow-xs space-y-3 relative group"
                   >
                     {/* Top Question Badges & Delete */}
@@ -590,6 +732,21 @@ Pembahasan: Gunakan prinsip inklusi-eksklusi. Banyak kelipatan 3: floor(999/3) =
                       </div>
 
                       <div className="flex items-center gap-1">
+                        {/* Attach screenshot button */}
+                        <label
+                          className="p-1.5 text-zinc-500 hover:text-zinc-800 rounded-lg hover:bg-zinc-100 transition-colors cursor-pointer flex items-center gap-1 text-[11px] font-medium"
+                          title="Lampirkan Tangkapan Layar (SS) dari Snipping Tool (Win+Shift+S lalu Ctrl+V)"
+                        >
+                          <Camera className="w-3.5 h-3.5 text-[#646464]" />
+                          <span className="hidden sm:inline">SS / Gambar</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => handleAttachImageToQuestion(idx, e.target.files?.[0])}
+                            className="hidden"
+                          />
+                        </label>
+
                         <button
                           type="button"
                           onClick={() => setEditingIndex(editingIndex === idx ? null : idx)}
@@ -617,11 +774,22 @@ Pembahasan: Gunakan prinsip inklusi-eksklusi. Banyak kelipatan 3: floor(999/3) =
                           <MathRenderer content={q.text} />
                         </div>
 
-                        {/* Optional Formula Preview - only show if formula exists AND not already in question text */}
-                        {q.formulaLatex &&
-                          !q.text.replace(/\s+/g, '').includes(q.formulaLatex.replace(/\s+/g, '')) && (
-                          <div className="bg-[#f7f7f8] border border-[#D5D5D5] rounded-xl p-2.5 text-center text-xs overflow-x-auto">
-                            <MathRenderer content={`$$${q.formulaLatex}$$`} />
+                        {/* Optional Attached Screenshot / Diagram */}
+                        {q.imageUrl && (
+                          <div className="relative inline-block bg-white border border-zinc-200 rounded-xl p-1.5 max-w-sm">
+                            <img
+                              src={q.imageUrl}
+                              alt={`Diagram / Tangkapan Layar Soal ${idx + 1}`}
+                              className="max-h-48 object-contain rounded-lg"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateQuestionField(idx, 'imageUrl', undefined)}
+                              className="absolute top-2 right-2 bg-rose-600 hover:bg-rose-700 text-white p-1 rounded-full shadow-xs cursor-pointer"
+                              title="Hapus Gambar"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
                           </div>
                         )}
 
@@ -683,6 +851,40 @@ Pembahasan: Gunakan prinsip inklusi-eksklusi. Banyak kelipatan 3: floor(999/3) =
                           />
                         </div>
 
+                        {/* Image upload in inline edit */}
+                        <div>
+                          <label className="block text-[11px] font-bold text-zinc-700 mb-1">
+                            Gambar / Tangkapan Layar Soal (SS):
+                          </label>
+                          {q.imageUrl ? (
+                            <div className="flex items-center gap-3 bg-white p-2 border border-zinc-200 rounded-xl">
+                              <img
+                                src={q.imageUrl}
+                                alt="SS Soal"
+                                className="max-h-20 object-contain rounded-lg"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateQuestionField(idx, 'imageUrl', undefined)}
+                                className="text-xs text-rose-600 hover:text-rose-800 font-semibold cursor-pointer"
+                              >
+                                Hapus Gambar
+                              </button>
+                            </div>
+                          ) : (
+                            <label className="border border-dashed border-zinc-300 hover:border-zinc-500 rounded-xl p-2.5 flex items-center justify-center gap-2 cursor-pointer bg-white text-zinc-600 text-[11px]">
+                              <Camera className="w-3.5 h-3.5" />
+                              <span>Pilih berkas gambar atau tekan Ctrl+V saat menyorot kartu soal</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => handleAttachImageToQuestion(idx, e.target.files?.[0])}
+                                className="hidden"
+                              />
+                            </label>
+                          )}
+                        </div>
+
                         <div className="grid grid-cols-2 gap-3">
                           <div>
                             <label className="block text-[11px] font-bold text-zinc-700 mb-1">
@@ -720,6 +922,32 @@ Pembahasan: Gunakan prinsip inklusi-eksklusi. Banyak kelipatan 3: floor(999/3) =
                           </div>
                         </div>
 
+                        {/* Options Text Edit */}
+                        <div className="space-y-1.5 pt-1">
+                          <label className="block text-[11px] font-bold text-zinc-700">
+                            Pilihan Opsi A s.d. E:
+                          </label>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                            {q.options?.map((opt, optIdx) => (
+                              <div key={opt.id} className="flex items-center gap-1.5">
+                                <span className="w-5 text-center font-bold text-zinc-600 text-xs">
+                                  {opt.id}.
+                                </span>
+                                <input
+                                  type="text"
+                                  value={opt.text}
+                                  onChange={(e) => {
+                                    const updatedOptions = [...(q.options || [])];
+                                    updatedOptions[optIdx] = { ...opt, text: e.target.value };
+                                    handleUpdateQuestionField(idx, 'options', updatedOptions);
+                                  }}
+                                  className="flex-1 bg-white border border-zinc-300 rounded-lg px-2 py-1 text-xs text-zinc-900 font-mono"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
                         <div>
                           <label className="block text-[11px] font-bold text-zinc-700 mb-1">
                             Pembahasan (KaTeX $...$):
@@ -754,11 +982,12 @@ Pembahasan: Gunakan prinsip inklusi-eksklusi. Banyak kelipatan 3: floor(999/3) =
                   onClick={() => {
                     setParsedQuestions([]);
                     setSelectedFile(null);
+                    setSuccessInfo(null);
                   }}
                   disabled={isSaving}
                   className="w-full sm:w-auto px-4 py-2.5 rounded-2xl bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-semibold transition-colors cursor-pointer border border-zinc-300"
                 >
-                  Batal / Unggah Berkas Lain
+                  Batal / Kembali ke Input
                 </button>
 
                 <div className="flex items-center gap-2 w-full sm:w-auto">

@@ -118,7 +118,19 @@ app.delete('/api/participants', (req, res) => {
 
 // Questions API
 app.get('/api/questions', (req, res) => {
-  res.json({ success: true, data: questions });
+  const sanitized = questions.map((q) => ({
+    ...q,
+    text: scrubEquationShadowDuplicates(q.text || ''),
+    explanation: scrubEquationShadowDuplicates(q.explanation || ''),
+    formulaLatex: scrubEquationShadowDuplicates(q.formulaLatex || ''),
+    options: Array.isArray(q.options)
+      ? q.options.map((opt: any) => ({
+          ...opt,
+          text: scrubEquationShadowDuplicates(opt.text || ''),
+        }))
+      : q.options,
+  }));
+  res.json({ success: true, data: sanitized });
 });
 
 app.post('/api/questions', (req, res) => {
@@ -378,59 +390,246 @@ function deduplicateAdjacentLines(text: string): string {
 function scrubEquationShadowDuplicates(text: string): string {
   if (!text) return '';
 
-  let s = text;
+  let s = text.trim();
 
   // 1. Remove duplicate adjacent lines first
   s = deduplicateAdjacentLines(s);
 
-  // 2. Math equation followed immediately by the same variable/letter:
-  // e.g. "$x$ x kelipatan 5" -> "$x$ kelipatan 5"
-  // e.g. "$x$ x berturut-turut" -> "$x$ berturut-turut"
-  // e.g. "$x$ x adalah" -> "$x$ adalah"
-  // e.g. "$y$ y" -> "$y$"
-  s = s.replace(/\$([a-zA-Z])\$\s*\1(?![a-zA-Z0-9])/gi, '$$$1$$ ');
-
-  // 3. Math equation followed immediately by the same number or digits:
-  // e.g. "$1$ 1" -> "$1$" (renders as 1, not 11)
-  // e.g. "$2$ 2" -> "$2$" (renders as 2, not 22)
-  // e.g. "$4$ 4" -> "$4$" (renders as 4, not 44)
-  // e.g. "$5$ 5" -> "$5$" (renders as 5, not 55)
-  // e.g. "$8$ 8" -> "$8$" (renders as 8, not 88)
-  s = s.replace(/\$([0-9]+)\$\s*\1(?![0-9])/g, '$$$1$$');
-
-  // 4. Duplicate single letter at start of line or option without math tag:
-  // e.g. "xx kelipatan 5" -> "x kelipatan 5"
-  // e.g. "xx kelipatan 72" -> "x kelipatan 72"
-  // e.g. "xx adalah genap" -> "x adalah genap"
-  // e.g. "xx adalah faktor" -> "x adalah faktor"
-  s = s.replace(/^([a-zA-Z])\1\s+/gm, '$1 ');
-
-  // 5. Duplicate variable inside sentences before common math predicates:
-  // e.g. "dan xx berturut-turut" -> "dan x berturut-turut"
-  s = s.replace(/\b([a-zA-Z])\1(?=\s+(?:kelipatan|berturut|adalah|faktor|merupakan|bilangan|positif|bulat|pecahan|ganjil|genap|prima|\+|\-|\*|\/|=|<|>|≤|≥))/gi, '$1');
-
-  // 6. Generic equation shadow: $formula$ followed by its exact or normalized plain text equivalent
-  // e.g. "$FPB(72, x) = 3, KPK(72, x) = 1800$ FPB(72, x) = 3, KPK(72, x) = 1800"
-  s = s.replace(/\$([^$]+)\$\s*([^$\n]+)/g, (fullMatch, formula, followingText) => {
-    const normFormula = formula.replace(/\s+/g, '').replace(/\\times/g, '×').replace(/\\div/g, '÷');
-    const normFollowing = followingText.replace(/\s+/g, '');
-    if (normFormula.length >= 3 && normFollowing.startsWith(normFormula)) {
-      const rest = followingText.trim().substring(formula.trim().length).trim();
-      return `$$${formula}$$ ${rest}`.trim();
+  // 1b. Direct clean of linear fractions with attached or space-separated shadow:
+  // e.g. "2013/7000 70002013", "2013/7000 20137000", "2013/7000 7000", "2013/7000 2013"
+  s = s.replace(
+    /\b(\d{1,6})\s*\/\s*(\d{1,6})\b\s*([0-9]+)/g,
+    (full, num, den, shadow) => {
+      const cleanNum = num.replace(/\s+/g, '');
+      const cleanDen = den.replace(/\s+/g, '');
+      const cleanShadow = shadow.replace(/\s+/g, '');
+      if (
+        cleanShadow === cleanNum + cleanDen ||
+        cleanShadow === cleanDen + cleanNum ||
+        cleanShadow === cleanNum ||
+        cleanShadow === cleanDen ||
+        cleanShadow.includes(cleanNum) ||
+        cleanShadow.includes(cleanDen)
+      ) {
+        return `$\\frac{${num}}{${den}}$ `;
+      }
+      return full;
     }
-    return fullMatch;
+  );
+
+  // 1c. Linear fraction without space where denominator is concatenated with shadow: "2013/700070002013"
+  s = s.replace(
+    /\b(\d{1,6})\s*\/\s*(\d{2,15})/g,
+    (full, num, denAndShadow) => {
+      for (let len = 1; len <= Math.min(6, denAndShadow.length - 1); len++) {
+        const testDen = denAndShadow.slice(0, len);
+        const testShadow = denAndShadow.slice(len);
+        if (
+          testShadow === testDen + num ||
+          testShadow === num + testDen ||
+          testShadow === testDen ||
+          testShadow === num
+        ) {
+          return `$\\frac{${num}}{${testDen}}$ `;
+        }
+      }
+      return full;
+    }
+  );
+
+  // 1d. Fraction followed by shadow text composed of its numerator & denominator
+  // e.g. "Jika \frac{2013}{7000} 70002013 ditulis" or "$\frac{2013}{7000} 70002013$"
+  s = s.replace(
+    /(\$?)\\frac\s*\{([^}]+)\}\s*\{([^}]+)\}(\$?)\s*([0-9a-zA-Z]+)(\$?)/g,
+    (full, _openDollar, num, den, _midDollar, shadow, _closeDollar) => {
+      const cleanNum = num.replace(/\s+/g, '');
+      const cleanDen = den.replace(/\s+/g, '');
+      const cleanShadow = shadow.replace(/\s+/g, '');
+
+      const isShadow =
+        cleanShadow === cleanNum + cleanDen ||
+        cleanShadow === cleanDen + cleanNum ||
+        cleanShadow === cleanNum ||
+        cleanShadow === cleanDen ||
+        cleanShadow.includes(cleanNum) ||
+        cleanShadow.includes(cleanDen);
+
+      if (isShadow) {
+        return `$\\frac{${num}}{${den}}$ `;
+      }
+      return full;
+    }
+  );
+
+  // Also clean shadow inside existing math formula without outer dollars
+  s = s.replace(
+    /\\frac\s*\{([^}]+)\}\s*\{([^}]+)\}\s*([0-9a-zA-Z]+)/g,
+    (full, num, den, shadow) => {
+      const cleanNum = num.replace(/\s+/g, '');
+      const cleanDen = den.replace(/\s+/g, '');
+      const cleanShadow = shadow.replace(/\s+/g, '');
+      if (
+        cleanShadow === cleanNum + cleanDen ||
+        cleanShadow === cleanDen + cleanNum ||
+        cleanShadow === cleanNum ||
+        cleanShadow === cleanDen ||
+        cleanShadow.includes(cleanNum) ||
+        cleanShadow.includes(cleanDen)
+      ) {
+        return `\\frac{${num}}{${den}} `;
+      }
+      return full;
+    }
+  );
+
+  // Explicit residue removal for known Word artifacts
+  s = s.replace(/\b70002013\b\s*/g, '');
+  s = s.replace(/\b20137000\b\s*/g, '');
+
+  // 1e. Full option string deduplication (for short option texts or numbers)
+  const bare = s.replace(/^\$+|\$+$/g, '').trim();
+
+  // Pure single-digit repeated: "11" -> "1", "$11$" -> "1", "$1$ 1" -> "1", "$1$1" -> "1"
+  if (/^(\d)\1$/.test(bare) || /^\$*(\d)\$*\s*\1$/.test(s.trim())) {
+    return bare.length > 0 ? bare[0] : s;
+  }
+
+  // Multi-digit repeated number: "1515" -> "15", "7272" -> "72", "18001800" -> "1800"
+  if (/^(\d{2,6})\1$/.test(bare)) {
+    return bare.replace(/^(\d{2,6})\1$/, '$1');
+  }
+
+  // Repeated single letter: "xx" -> "x", "$xx$" -> "x", "$x$ x" -> "x"
+  if (/^([a-zA-Z])\1$/.test(bare)) {
+    return bare[0];
+  }
+
+  // Exact half string duplication on bare string: e.g. "xkelipatan5xkelipatan5" -> "xkelipatan5"
+  if (bare.length >= 4 && bare.length % 2 === 0) {
+    const half = bare.length / 2;
+    const p1 = bare.slice(0, half);
+    const p2 = bare.slice(half);
+    if (p1 === p2) {
+      s = p1;
+    }
+  }
+
+  // Exact half with space: e.g. "x kelipatan 5x kelipatan 5" or "x kelipatan 5 x kelipatan 5"
+  const spaceParts = s.split(/\s+/);
+  if (spaceParts.length >= 2 && spaceParts.length % 2 === 0) {
+    const half = spaceParts.length / 2;
+    const p1 = spaceParts.slice(0, half).join(' ');
+    const p2 = spaceParts.slice(half).join(' ');
+    if (p1 === p2) {
+      s = p1;
+    }
+  }
+
+  // Split squeezed Indonesian words attached to variables:
+  // e.g. "xkelipatan5" -> "$x$ kelipatan 5"
+  // e.g. "xadalahgenap" -> "$x$ adalah genap"
+  // e.g. "xadalahfaktordari3" -> "$x$ adalah faktor dari 3"
+  // e.g. "xkelipatan72" -> "$x$ kelipatan 72"
+  // e.g. "xkelipatan7" -> "$x$ kelipatan 7"
+  s = s.replace(
+    /\b([a-zA-Z])(kelipatan|adalah|faktor|merupakan|bilangan|positif|bulat|ganjil|genap|prima)([a-zA-Z0-9]*)\b/gi,
+    (_m, v, word, rest) => {
+      let cleanRest = rest || '';
+      if (cleanRest.startsWith('faktordari')) {
+        cleanRest = 'faktor dari ' + cleanRest.slice(10);
+      } else if (cleanRest.startsWith('dari')) {
+        cleanRest = 'dari ' + cleanRest.slice(4);
+      }
+      return `$${v}$ ${word} ${cleanRest}`.replace(/\s+/g, ' ').trim();
+    }
+  );
+
+  // Linear fraction conversion (e.g. 2013/7000 -> $\frac{2013}{7000}$)
+  s = convertLinearFractionsToKatex(s);
+
+  // Safe Math Delimiter & Exponent Handling:
+  // Tokenize into MATH blocks ($$...$$ or $...$) vs TEXT blocks so math mode is never inverted!
+  const tokens: { type: 'MATH' | 'TEXT'; content: string; display?: boolean }[] = [];
+  const mathRegex = /(\$\$[\s\S]*?\$\$|\$[^\$\n]+?\$)/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = mathRegex.exec(s)) !== null) {
+    if (match.index > lastIndex) {
+      tokens.push({ type: 'TEXT', content: s.substring(lastIndex, match.index) });
+    }
+    const isDisplay = match[0].startsWith('$$');
+    const rawMath = isDisplay ? match[0].slice(2, -2) : match[0].slice(1, -1);
+    tokens.push({ type: 'MATH', content: rawMath, display: isDisplay });
+    lastIndex = mathRegex.lastIndex;
+  }
+  if (lastIndex < s.length) {
+    tokens.push({ type: 'TEXT', content: s.substring(lastIndex) });
+  }
+
+  const processed = tokens.map((token) => {
+    if (token.type === 'MATH') {
+      let m = token.content;
+      m = m.replace(/²/g, '^2');
+      m = m.replace(/³/g, '^3');
+      m = m.replace(/⁴/g, '^4');
+      m = m.replace(/⁵/g, '^5');
+      m = m.replace(/⁶/g, '^6');
+      m = m.replace(/⁷/g, '^7');
+      m = m.replace(/⁸/g, '^8');
+      m = m.replace(/⁹/g, '^9');
+      m = m.replace(/⁰/g, '^0');
+      m = m.replace(/ⁿ/g, '^n');
+      m = m.replace(/\^([a-zA-Z0-9])(?![{a-zA-Z0-9])/g, '^{$1}');
+      return token.display ? `$$${m}$$` : `$${m}$`;
+    } else {
+      let t = token.content;
+      t = t.replace(/sqrt\(([^)]+)\)/gi, '$\\sqrt{$1}$');
+      t = t.replace(/√([a-zA-Z0-9]+)/g, '$\\sqrt{$1}$');
+      t = t.replace(/²/g, '$^2$');
+      t = t.replace(/³/g, '$^3$');
+      t = t.replace(/([a-zA-Z0-9\)])\s*[\^]\s*([a-zA-Z0-9]+|\{[^}]+\})/g, '$$$1^{$2}$$');
+      return t;
+    }
   });
 
-  // 7. Clean up extra spaces around math delimiters and punctuation
-  s = s
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\s+([.,;:?!])/g, '$1')
-    .replace(/\$\s+/g, '$')
-    .replace(/\s+\$/g, '$')
-    .trim();
+  s = processed.join('');
 
-  // Ensure single space between $...$ and following word if not punctuation
+  // Spacing normalization around math delimiters
+  s = s.replace(/([a-zA-Z0-9])\$([^\$]+)\$/g, '$1 $$$2$$');
   s = s.replace(/\$([^\$]+)\$([a-zA-Z0-9])/g, '$$$1$$ $2');
+
+  // Clean redundant nested dollars or empty math blocks
+  s = s.replace(/\$\s*\$/g, ' ');
+  s = s.replace(/[ \t]+/g, ' ');
+
+  return s.trim();
+}
+
+// Auto-beautify linear fractions (2013/7000 -> \frac{2013}{7000}) so they render vertically without ugly slashes
+function convertLinearFractionsToKatex(text: string): string {
+  if (!text) return '';
+  let s = text;
+
+  // 1. Parenthesized fractions: (2013)/(7000) or (a)/(b) -> \frac{2013}{7000}
+  s = s.replace(/\(([a-zA-Z0-9+\-*\\_ ]+)\)\s*\/\s*\(([a-zA-Z0-9+\-*\\_ ]+)\)/g, '$\\frac{$1}{$2}$');
+
+  // 2. Numerical fractions: 2013/7000 or 4/7 or 2013/(7x1000) -> \frac{...}{...}
+  // Exclude date patterns like 02/11/2026 or 11/02/2026
+  s = s.replace(/(?<![0-9/])(\d{1,6})\s*\/\s*\(([^)]+)\)/g, '$\\frac{$1}{$2}$');
+  s = s.replace(/(?<![0-9/])(\d{1,6})\s*\/\s*(\d{1,6})(?![0-9/])/g, '$\\frac{$1}{$2}$');
+
+  // 3. Algebraic fractions: x/y or a/b
+  s = s.replace(/(?<![a-zA-Z0-9/])([0-9]*[a-zA-Z])\s*\/\s*([0-9]*[a-zA-Z])(?![a-zA-Z0-9/])/g, '$\\frac{$1}{$2}$');
+
+  // 4. Clean up redundant adjacent dollar signs: $$ \frac... $$ -> $\frac...$
+  s = s.replace(/\$\$+/g, '$');
+  s = s.replace(/\$\s*\$/g, ' ');
+
+  // 5. Fix nested dollars inside fractions
+  s = s.replace(/\$([^\$]+)\$/g, (_m, inner) => {
+    return `$${inner.replace(/\$/g, '').trim()}$`;
+  });
 
   return s;
 }
@@ -559,6 +758,26 @@ function extractTextAndMathFromWordXml(xml: string): string {
             }
           }
 
+          // Case C: Fraction shadow (e.g. math was \frac{2013}{7000}, text is "70002013" or starts with "70002013" / "20137000")
+          if (lastMathLatex && lastMathLatex.includes('\\frac')) {
+            const fracMatch = lastMathLatex.match(/\\frac\{([^}]+)\}\{([^}]+)\}/);
+            if (fracMatch) {
+              const numPart = fracMatch[1].replace(/\s+/g, '');
+              const denPart = fracMatch[2].replace(/\s+/g, '');
+              const combos = [numPart + denPart, denPart + numPart, numPart, denPart];
+              for (const combo of combos) {
+                if (combo.length >= 2) {
+                  const esc = combo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                  const fracShadowReg = new RegExp(`^\\s*${esc}(?=[\\s.,;:?!]|$)`, 'i');
+                  if (fracShadowReg.test(decoded)) {
+                    decoded = decoded.replace(fracShadowReg, '').trimStart();
+                    break;
+                  }
+                }
+              }
+            }
+          }
+
           lastMathClean = '';
           lastMathLatex = '';
         }
@@ -605,12 +824,16 @@ async function extractDocxTextWithMath(buffer: Buffer): Promise<string> {
 // Parses all questions, options A-E, answers, and explanations verbatim without external API quota
 function parseIndonesianOlympiadText(
   extractedText: string,
-  categoryOverride: string = 'SMP'
+  categoryOverride: string = 'SMP',
+  relaxedMode: boolean = false
 ): any[] {
   const questions: any[] = [];
-  const rawLines = extractedText.split('\n').map((l) => l.trim()).filter(Boolean);
+  const rawLines = extractedText
+    .split('\n')
+    .map((l) => l.replace(/[\u00a0\u200b\u200e\u200f]/g, ' ').trim())
+    .filter(Boolean);
 
-  const qNumRegex = /^(?:No\.?\s*|Soal\s*)?(\d{1,2})[\.\)\]]\s*(.*)$/i;
+  const qNumRegex = /^(?:No\.?\s*|Nomor\s*|Soal\s*)?(?:\$|\\textbf\{|\*\*)*\s*(\d{1,2})\s*(?:\$|\}|\*\*)*\s*[\.\)\]\-:]\s*(.*)$/i;
   const isExplanationStepWord = (str: string) =>
     /^(?:Langkah|Tahap|Cara|Kasus|Metode|Sifat|Pola|Sub|Bagian)\s*\d+/i.test(str);
 
@@ -631,7 +854,7 @@ function parseIndonesianOlympiadText(
 
       const isNextQuestion = !currentBlock
         ? num === 1 || num <= 5
-        : num === currentBlock.number + 1 || (num > currentBlock.number && !isInsideExplanation);
+        : num === currentBlock.number + 1 || (num > currentBlock.number && (!isInsideExplanation || afterNum.length > 10));
 
       if (isNextQuestion && !looksLikeExplanationStep) {
         currentBlock = { number: num, lines: [line] };
@@ -642,6 +865,29 @@ function parseIndonesianOlympiadText(
 
     if (currentBlock) {
       currentBlock.lines.push(line);
+    }
+  }
+
+  // FALLBACK PASS: If no numbered blocks were found (e.g. Word lists without literal numbers or raw text paste)
+  if (questionBlocks.length === 0) {
+    let autoNum = 1;
+    let tempLines: string[] = [];
+    for (let i = 0; i < rawLines.length; i++) {
+      const line = rawLines[i];
+      const isOptionA = /^\(?A\)?[.\-:\)]\s*/i.test(line);
+      if (isOptionA && tempLines.length > 0) {
+        const qBlockLines = [...tempLines, line];
+        let j = i + 1;
+        while (j < rawLines.length && !(/^\(?A\)?[.\-:\)]\s*/i.test(rawLines[j]) && rawLines[j - 1]?.match(/Pembahasan|Kunci/i))) {
+          qBlockLines.push(rawLines[j]);
+          j++;
+        }
+        questionBlocks.push({ number: autoNum++, lines: qBlockLines });
+        tempLines = [];
+        i = j - 1;
+        continue;
+      }
+      tempLines.push(line);
     }
   }
 
@@ -956,23 +1202,64 @@ ${extractedText.substring(0, 50000)}
         if (generatedText) break;
       }
 
-      if (!generatedText && lastError) {
-        throw lastError;
+      if (!generatedText) {
+        console.warn('[Gemini Word Parser] AI quota/network issue. Menggunakan parser deterministik cerdas...');
+        const fallbackQuestions = parseIndonesianOlympiadText(extractedText, categoryOverride, true);
+        if (fallbackQuestions.length > 0) {
+          return res.json({
+            success: true,
+            count: fallbackQuestions.length,
+            questions: fallbackQuestions,
+            extractedSample: extractedText.substring(0, 200),
+            fallbackUsed: true,
+          });
+        }
+        if (lastError) {
+          const errMsg = String(lastError?.message || lastError);
+          if (errMsg.includes('429') || errMsg.includes('RESOURCE_EXHAUSTED')) {
+            return res.status(429).json({
+              success: false,
+              error: 'Kuota AI harian/menit dari Google tercapai (429). Gunakan tab "Tempel Teks Cerdas" di samping untuk langsung menyalin naskah soal dari Word seketika tanpa kuota AI!',
+            });
+          }
+          throw lastError;
+        }
       }
     } else {
+      const fallbackQuestions = parseIndonesianOlympiadText(extractedText, categoryOverride, true);
+      if (fallbackQuestions.length > 0) {
+        return res.json({
+          success: true,
+          count: fallbackQuestions.length,
+          questions: fallbackQuestions,
+          extractedSample: extractedText.substring(0, 200),
+          fallbackUsed: true,
+        });
+      }
       return res.status(422).json({
         success: false,
         error:
-          'Format nomor soal dalam berkas Word tidak terbaca secara otomatis. Pastikan format penomoran menggunakan "1. ", "2. " dst.',
+          'Format nomor soal dalam berkas Word tidak terbaca secara otomatis. Gunakan tab "Tempel Teks Cerdas" untuk menyalin naskah langsung.',
       });
     }
 
-    const parsedQuestions = parseQuestionsJsonSafely(generatedText);
+    let parsedQuestions = parseQuestionsJsonSafely(generatedText);
 
     if (!Array.isArray(parsedQuestions) || parsedQuestions.length === 0) {
+      console.warn('[Gemini Word Parser] AI menghasilkan 0 butir soal, beralih ke parser deterministik...');
+      const fallbackQuestions = parseIndonesianOlympiadText(extractedText, categoryOverride, true);
+      if (fallbackQuestions.length > 0) {
+        return res.json({
+          success: true,
+          count: fallbackQuestions.length,
+          questions: fallbackQuestions,
+          extractedSample: extractedText.substring(0, 200),
+          fallbackUsed: true,
+        });
+      }
       return res.status(422).json({
         success: false,
-        error: 'Tidak ditemukan butir soal matematika yang dapat dikenali dalam dokumen Word.',
+        error: 'Tidak ditemukan butir soal matematika yang dapat dikenali dalam dokumen Word. Anda bisa menyalin teks soal ke tab "Tempel Teks Cerdas".',
       });
     }
 
@@ -1065,6 +1352,34 @@ ${extractedText.substring(0, 50000)}
       success: false,
       error: userMsg,
     });
+  }
+});
+
+// Smart Paste Text Question Parser (Zero Quota, Deterministic & Fast)
+app.post('/api/admin/parse-text-questions', (req, res) => {
+  try {
+    const { text, category } = req.body;
+    if (!text || typeof text !== 'string' || !text.trim()) {
+      return res.status(400).json({ success: false, error: 'Teks naskah soal tidak boleh kosong.' });
+    }
+    const cat = category === 'SMA' ? 'SMA' : 'SMP';
+    const parsed = parseIndonesianOlympiadText(text, cat, true);
+    if (!parsed || parsed.length === 0) {
+      return res.status(422).json({
+        success: false,
+        error:
+          'Tidak dapat mendeteksi butir soal dari teks yang ditempel. Pastikan teks memiliki nomor soal (contoh: "1. ", "2. ") dan pilihan jawaban ("A. ", "B. ", dst).',
+      });
+    }
+
+    res.json({
+      success: true,
+      count: parsed.length,
+      questions: parsed,
+    });
+  } catch (error: any) {
+    console.error('Text question parser error:', error);
+    res.status(500).json({ success: false, error: error?.message || 'Gagal membedah teks soal.' });
   }
 });
 

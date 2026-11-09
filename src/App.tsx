@@ -9,6 +9,7 @@ import { AboutView } from './components/AboutView';
 import { INITIAL_QUESTIONS_DATA } from './data/questions';
 import { ParticipantProfile, UserAnswer, Question, LiveParticipantMonitoring, PerQuestionResult, ViolationRecord } from './types';
 import { ApiService } from './services/api';
+import { sanitizeQuestionsList } from './utils/mathSanitizer';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<
@@ -42,20 +43,39 @@ export default function App() {
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          return sanitizeQuestionsList(parsed);
         }
       }
     } catch (e) {
       console.warn('Could not read stored questions:', e);
     }
-    return INITIAL_QUESTIONS_DATA;
+    return sanitizeQuestionsList(INITIAL_QUESTIONS_DATA);
   });
+
+  // Automatically scrub and sanitize any legacy localStorage question data on load
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('mmo_bank_soal') || localStorage.getItem('mmo_questions_data');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const cleaned = sanitizeQuestionsList(parsed);
+          localStorage.setItem('mmo_bank_soal', JSON.stringify(cleaned));
+          localStorage.setItem('mmo_questions_data', JSON.stringify(cleaned));
+          setAllQuestions(cleaned);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
 
   const handleAddQuestion = (newQ: Question) => {
     setAllQuestions((prev) => {
-      const updated = [newQ, ...prev];
+      const updated = sanitizeQuestionsList([newQ, ...prev]);
       try {
         localStorage.setItem('mmo_bank_soal', JSON.stringify(updated));
+        localStorage.setItem('mmo_questions_data', JSON.stringify(updated));
       } catch (e) {
         console.warn('Could not save question to storage:', e);
       }

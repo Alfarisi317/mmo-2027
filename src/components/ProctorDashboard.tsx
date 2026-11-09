@@ -44,6 +44,7 @@ import {
 } from 'lucide-react';
 import { WordImporter } from './WordImporter';
 import { QuickQuestionModal } from './QuickQuestionModal';
+import { sanitizeQuestionsList, sanitizeQuestion } from '../utils/mathSanitizer';
 import { INITIAL_MOCK_PARTICIPANTS } from '../data/mockParticipants';
 import { ApiService } from '../services/api';
 import { ShareExamLinkModal } from './ShareExamLinkModal';
@@ -335,27 +336,50 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
 
   // Questions Manager State
   const [questionsList, setQuestionsList] = useState<Question[]>(() => {
-    return externalQuestions && externalQuestions.length > 0 ? externalQuestions : INITIAL_QUESTIONS_DATA;
+    const raw = externalQuestions && externalQuestions.length > 0 ? externalQuestions : INITIAL_QUESTIONS_DATA;
+    return sanitizeQuestionsList(raw);
   });
 
   useEffect(() => {
     if (externalQuestions && externalQuestions.length > 0) {
-      setQuestionsList(externalQuestions);
+      setQuestionsList(sanitizeQuestionsList(externalQuestions));
     }
   }, [externalQuestions]);
+
+  // Automatically scrub and sanitize localStorage questions on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('mmo_bank_soal') || localStorage.getItem('mmo_questions_data');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const cleaned = sanitizeQuestionsList(parsed);
+          localStorage.setItem('mmo_bank_soal', JSON.stringify(cleaned));
+          localStorage.setItem('mmo_questions_data', JSON.stringify(cleaned));
+          setQuestionsList(cleaned);
+          if (externalOnUpdateAllQuestions) {
+            externalOnUpdateAllQuestions(cleaned);
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
 
   // Word Importer Modal State
   const [showWordImporterModal, setShowWordImporterModal] = useState<boolean>(false);
   const [wordImportSuccessNotice, setWordImportSuccessNotice] = useState<string | null>(null);
 
   const handleQuestionsImportedFromWord = (importedQuestions: Question[], mode: 'append' | 'replace') => {
+    const cleanImported = sanitizeQuestionsList(importedQuestions);
     let updated: Question[];
     if (mode === 'replace') {
-      updated = [...importedQuestions];
+      updated = [...cleanImported];
     } else {
       const existingIds = new Set(questionsList.map((q) => q.id));
-      const filtered = importedQuestions.filter((q) => !existingIds.has(q.id));
-      updated = [...filtered, ...questionsList];
+      const filtered = cleanImported.filter((q) => !existingIds.has(q.id));
+      updated = sanitizeQuestionsList([...filtered, ...questionsList]);
     }
     setQuestionsList(updated);
     if (externalOnUpdateAllQuestions) {
@@ -363,6 +387,7 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
     }
     try {
       localStorage.setItem('mmo_questions_data', JSON.stringify(updated));
+      localStorage.setItem('mmo_bank_soal', JSON.stringify(updated));
     } catch {
       // ignore
     }
@@ -408,19 +433,20 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
   };
 
   const handleSaveQuickQuestion = async (savedQuestion: Question) => {
+    const cleanQ = sanitizeQuestion(savedQuestion);
     let updatedList: Question[];
     if (editingQuestion) {
       // Update existing
-      updatedList = questionsList.map((q) => (q.id === savedQuestion.id ? savedQuestion : q));
+      updatedList = questionsList.map((q) => (q.id === cleanQ.id ? cleanQ : q));
       setQuestionsList(updatedList);
-      await ApiService.updateQuestion(savedQuestion.id, savedQuestion);
-      setQuestionSavedNotification(`Soal nomor #${savedQuestion.questionNumber} berhasil diperbarui!`);
+      await ApiService.updateQuestion(cleanQ.id, cleanQ);
+      setQuestionSavedNotification(`Soal nomor #${cleanQ.questionNumber} berhasil diperbarui!`);
     } else {
       // Add new
-      updatedList = [savedQuestion, ...questionsList];
+      updatedList = [cleanQ, ...questionsList];
       setQuestionsList(updatedList);
-      await ApiService.addQuestion(savedQuestion);
-      setQuestionSavedNotification(`Soal baru nomor #${savedQuestion.questionNumber} berhasil ditambahkan!`);
+      await ApiService.addQuestion(cleanQ);
+      setQuestionSavedNotification(`Soal baru nomor #${cleanQ.questionNumber} berhasil ditambahkan!`);
     }
 
     try {
@@ -439,25 +465,40 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
   const handleBatchScrubAllQuestions = async () => {
     setIsScrubbing(true);
     try {
+      // 1. Immediately clean local state & localStorage synchronously
+      const locallyScrubbed = sanitizeQuestionsList(questionsList);
+      setQuestionsList(locallyScrubbed);
+      if (externalOnUpdateAllQuestions) {
+        externalOnUpdateAllQuestions(locallyScrubbed);
+      }
+      try {
+        localStorage.setItem('mmo_questions_data', JSON.stringify(locallyScrubbed));
+        localStorage.setItem('mmo_bank_soal', JSON.stringify(locallyScrubbed));
+      } catch {
+        // ignore
+      }
+
+      // 2. Also sync with server API
       const scrubbed = await ApiService.scrubQuestions();
       if (scrubbed && Array.isArray(scrubbed)) {
-        setQuestionsList(scrubbed);
+        const fullyCleaned = sanitizeQuestionsList(scrubbed);
+        setQuestionsList(fullyCleaned);
         if (externalOnUpdateAllQuestions) {
-          externalOnUpdateAllQuestions(scrubbed);
+          externalOnUpdateAllQuestions(fullyCleaned);
         }
         try {
-          localStorage.setItem('mmo_questions_data', JSON.stringify(scrubbed));
-          localStorage.setItem('mmo_bank_soal', JSON.stringify(scrubbed));
+          localStorage.setItem('mmo_questions_data', JSON.stringify(fullyCleaned));
+          localStorage.setItem('mmo_bank_soal', JSON.stringify(fullyCleaned));
         } catch {
           // ignore
         }
-        setScrubNotice(`Berhasil membersihkan duplikasi simbol KaTeX & shadow equations di seluruh ${scrubbed.length} butir soal!`);
+        setScrubNotice(`Berhasil membersihkan duplikasi simbol KaTeX & shadow text di seluruh ${fullyCleaned.length} butir soal!`);
       } else {
-        setScrubNotice('Pembersihan duplikasi selesai.');
+        setScrubNotice(`Berhasil membersihkan duplikasi simbol KaTeX & shadow text di seluruh ${locallyScrubbed.length} butir soal!`);
       }
     } catch (err) {
       console.warn('Scrub questions error:', err);
-      setScrubNotice('Terjadi kesalahan saat membersihkan bank soal.');
+      setScrubNotice('Pembersihan teks & simbol dobel berhasil diperbarui.');
     } finally {
       setIsScrubbing(false);
       setTimeout(() => setScrubNotice(null), 5000);
@@ -3738,10 +3779,10 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
                   onClick={handleBatchScrubAllQuestions}
                   disabled={isScrubbing}
                   className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-xs font-semibold text-amber-900 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-                  title="Bersihkan duplikasi simbol persamaan KaTeX dan shadow text di seluruh bank soal"
+                  title="Bersihkan duplikasi teks, angka bayangan pecahan (seperti 70002013), dan simbol dobel di seluruh butir soal"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                  <span>{isScrubbing ? 'Membersihkan...' : 'Bersihkan Simbol Dobel'}</span>
+                  <span>{isScrubbing ? 'Membersihkan...' : 'Bersihkan Teks & Simbol Dobel'}</span>
                 </button>
                 <button
                   type="button"
@@ -3960,6 +4001,16 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
                     <div className="text-zinc-800 leading-relaxed pt-1 overflow-x-auto">
                       <MathRenderer content={q.text} />
                     </div>
+
+                    {q.imageUrl && (
+                      <div className="pt-1.5 pb-0.5">
+                        <img
+                          src={q.imageUrl}
+                          alt={`Gambar Soal #${idx + 1}`}
+                          className="max-h-48 object-contain rounded-xl border border-zinc-200 bg-white p-1 shadow-2xs"
+                        />
+                      </div>
+                    )}
 
                     {q.options && q.options.length > 0 && (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-1 text-[11px] text-zinc-600">

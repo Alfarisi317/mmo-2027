@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   Sparkles,
@@ -9,6 +9,9 @@ import {
   PlusCircle,
   CheckCircle2,
   RefreshCw,
+  Image as ImageIcon,
+  UploadCloud,
+  Trash2,
 } from 'lucide-react';
 import {
   Question,
@@ -18,6 +21,7 @@ import {
   QuestionType,
 } from '../types';
 import { MathRenderer } from './MathRenderer';
+import { sanitizeMathString } from '../utils/mathSanitizer';
 
 interface QuickQuestionModalProps {
   isOpen: boolean;
@@ -29,45 +33,7 @@ interface QuickQuestionModalProps {
 
 // Client-side scrubber to deduplicate equation shadow text immediately in modal
 function cleanDuplicatesHelper(str: string): string {
-  if (!str) return '';
-  let s = str;
-
-  // Deduplicate adjacent identical lines
-  const lines = s.split('\n');
-  const uniqueLines: string[] = [];
-  for (let i = 0; i < lines.length; i++) {
-    const cur = lines[i];
-    const prev = uniqueLines.length > 0 ? uniqueLines[uniqueLines.length - 1] : null;
-    if (prev !== null && cur.trim() && cur.trim() === prev.trim()) {
-      continue;
-    }
-    uniqueLines.push(cur);
-  }
-  s = uniqueLines.join('\n');
-
-  // Shadow variables right after math: $x$ x -> $x$
-  s = s.replace(/\$([a-zA-Z])\$\s*\1(?![a-zA-Z0-9])/gi, '$$$1$$ ');
-  // Shadow numbers right after math: $1$ 1 -> $1$
-  s = s.replace(/\$([0-9]+)\$\s*\1(?![0-9])/g, '$$$1$$');
-  // Doubled single letters: xx kelipatan -> x kelipatan
-  s = s.replace(/^([a-zA-Z])\1\s+/gm, '$1 ');
-  s = s.replace(/\b([a-zA-Z])\1(?=\s+(?:kelipatan|berturut|adalah|faktor|merupakan|bilangan|positif|bulat|pecahan|ganjil|genap|prima|\+|\-|\*|\/|=|<|>|≤|≥))/gi, '$1');
-
-  // Generic equation shadow
-  s = s.replace(/\$([^$]+)\$\s*([^$\n]+)/g, (fullMatch, formula, followingText) => {
-    const normFormula = formula.replace(/\s+/g, '').replace(/\\times/g, '×').replace(/\\div/g, '÷');
-    const normFollowing = followingText.replace(/\s+/g, '');
-    if (normFormula.length >= 3 && normFollowing.startsWith(normFormula)) {
-      const rest = followingText.trim().substring(formula.trim().length).trim();
-      return `$$${formula}$$ ${rest}`.trim();
-    }
-    return fullMatch;
-  });
-
-  return s
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\s+([.,;:?!])/g, '$1')
-    .trim();
+  return sanitizeMathString(str);
 }
 
 export const QuickQuestionModal: React.FC<QuickQuestionModalProps> = ({
@@ -101,6 +67,7 @@ export const QuickQuestionModal: React.FC<QuickQuestionModalProps> = ({
   });
   const [correctAnswer, setCorrectAnswer] = useState<string>(question?.correctAnswer || 'A');
   const [explanation, setExplanation] = useState<string>(question?.explanation || '');
+  const [imageUrl, setImageUrl] = useState<string>(question?.imageUrl || '');
   const [points, setPoints] = useState<{ correct: number; wrong: number; blank: number }>(() => {
     return question?.points || { correct: 4, wrong: -1, blank: 0 };
   });
@@ -108,6 +75,7 @@ export const QuickQuestionModal: React.FC<QuickQuestionModalProps> = ({
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [cleanFeedback, setCleanFeedback] = useState<string | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
 
   // Sync state when editing a new question
   useEffect(() => {
@@ -117,10 +85,14 @@ export const QuickQuestionModal: React.FC<QuickQuestionModalProps> = ({
       setDomain(question.domain || 'Aljabar');
       setType(question.type || 'multiple_choice');
       setQuestionNumber(question.questionNumber || 1);
-      setText(question.text || '');
+      setText(cleanDuplicatesHelper(question.text || ''));
+      setImageUrl(question.imageUrl || '');
       setOptions(
         question.options && question.options.length > 0
-          ? question.options
+          ? question.options.map((opt) => ({
+              id: opt.id,
+              text: cleanDuplicatesHelper(opt.text || ''),
+            }))
           : [
               { id: 'A', text: '' },
               { id: 'B', text: '' },
@@ -130,7 +102,7 @@ export const QuickQuestionModal: React.FC<QuickQuestionModalProps> = ({
             ]
       );
       setCorrectAnswer(question.correctAnswer || 'A');
-      setExplanation(question.explanation || '');
+      setExplanation(cleanDuplicatesHelper(question.explanation || ''));
       setPoints(question.points || { correct: 4, wrong: -1, blank: 0 });
     } else {
       setCategory(defaultCategory);
@@ -139,6 +111,7 @@ export const QuickQuestionModal: React.FC<QuickQuestionModalProps> = ({
       setType('multiple_choice');
       setQuestionNumber(1);
       setText('');
+      setImageUrl('');
       setOptions([
         { id: 'A', text: '' },
         { id: 'B', text: '' },
@@ -180,9 +153,39 @@ export const QuickQuestionModal: React.FC<QuickQuestionModalProps> = ({
     setTimeout(() => setCleanFeedback(null), 3000);
   };
 
+  const handleImageFile = (file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (typeof e.target?.result === 'string') {
+        setImageUrl(e.target.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handlePasteEvent = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const file = items[i].getAsFile();
+        if (file) {
+          handleImageFile(file);
+          setCleanFeedback('Tangkapan layar (SS) berhasil ditempelkan!');
+          setTimeout(() => setCleanFeedback(null), 3000);
+          break;
+        }
+      }
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!text.trim()) return;
+    if (!text.trim() && !imageUrl.trim()) return;
 
     setIsSaving(true);
     try {
@@ -195,6 +198,7 @@ export const QuickQuestionModal: React.FC<QuickQuestionModalProps> = ({
         questionNumber: Number(questionNumber) || 1,
         text: cleanDuplicatesHelper(text.trim()),
         formulaLatex: '', // formulas are embedded in text via $...$
+        imageUrl: imageUrl.trim() || undefined,
         options:
           type === 'multiple_choice'
             ? options.map((opt) => ({
@@ -454,6 +458,72 @@ export const QuickQuestionModal: React.FC<QuickQuestionModalProps> = ({
                 )}
               </div>
 
+              {/* Gambar / Tangkapan Layar Soal (Screenshot Win+Shift+S / File) */}
+              <div
+                onPaste={handlePasteEvent}
+                className="bg-[#f7f7f8] border border-[#D5D5D5] rounded-2xl p-3.5 space-y-2.5"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ImageIcon className="w-4 h-4 text-[#646464]" />
+                    <label className="text-xs font-bold text-zinc-900">
+                      Tangkapan Layar / Gambar Soal (Opsional):
+                    </label>
+                  </div>
+                  <span className="text-[10px] text-zinc-500 font-medium">
+                    Bisa <strong className="text-zinc-800">Win+Shift+S</strong> lalu tekan <strong className="text-zinc-800">Ctrl+V</strong> di sini
+                  </span>
+                </div>
+
+                {imageUrl ? (
+                  <div className="relative bg-white border border-zinc-200 rounded-xl p-2 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <img
+                        src={imageUrl}
+                        alt="Pratinjau Gambar Soal"
+                        className="max-h-24 max-w-[180px] object-contain rounded-lg border border-zinc-200 bg-white"
+                      />
+                      <div className="text-xs min-w-0">
+                        <span className="font-bold text-emerald-700 block">✓ Gambar Terpasang</span>
+                        <span className="text-[11px] text-zinc-500 truncate block">
+                          Tampil di bawah teks soal peserta
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setImageUrl('')}
+                      className="p-2 text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                      title="Hapus Gambar"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => imageInputRef.current?.click()}
+                    className="border border-dashed border-zinc-300 hover:border-[#646464] bg-white hover:bg-zinc-50 rounded-xl p-3 text-center cursor-pointer transition-colors"
+                  >
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleImageFile(e.target.files?.[0])}
+                      className="hidden"
+                    />
+                    <div className="flex items-center justify-center gap-2 text-xs text-zinc-600">
+                      <UploadCloud className="w-4 h-4 text-[#646464]" />
+                      <span>
+                        Klik untuk unggah gambar atau tempel tangkapan layar (<strong>Ctrl+V</strong>)
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-zinc-400 mt-0.5">
+                      Sangat cocok untuk geometri, grafik, atau rumus Word kompleks
+                    </p>
+                  </div>
+                )}
+              </div>
+
               {/* Options Section (If Multiple Choice) */}
               {type === 'multiple_choice' ? (
                 <div className="space-y-2 pt-2 border-t border-[#D5D5D5]">
@@ -629,6 +699,17 @@ export const QuickQuestionModal: React.FC<QuickQuestionModalProps> = ({
               <div className="text-zinc-900 text-sm leading-relaxed">
                 <MathRenderer content={text || '(Teks soal masih kosong)'} />
               </div>
+
+              {/* Attached Image / Screenshot */}
+              {imageUrl && (
+                <div className="p-2 bg-white border border-zinc-200 rounded-xl inline-block max-w-md">
+                  <img
+                    src={imageUrl}
+                    alt="Pratinjau Tangkapan Layar Soal"
+                    className="max-h-56 object-contain rounded-lg"
+                  />
+                </div>
+              )}
 
               {/* Options */}
               {type === 'multiple_choice' && (
