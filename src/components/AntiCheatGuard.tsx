@@ -211,19 +211,19 @@ export const AntiCheatGuard: React.FC<AntiCheatGuardProps> = ({
 
       {/* Return from Tab Switch Alert Banner */}
       {tabSwitchedWarning && !isLocked && (
-        <div className="fixed inset-0 z-50 bg-zinc-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="max-w-md w-full bg-white border border-rose-200 rounded-2xl p-6 shadow-2xl text-center">
+        <div className="fixed inset-0 z-50 bg-[#1E3954]/75 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="max-w-md w-full bg-white border-2 border-rose-400 rounded-2xl p-6 shadow-2xl text-center">
             <div className="w-14 h-14 bg-rose-50 border border-rose-200 rounded-full flex items-center justify-center mx-auto mb-4">
               <AlertOctagon className="w-8 h-8 text-rose-600" />
             </div>
-            <h3 className="text-lg font-bold text-zinc-900 mb-2">
+            <h3 className="text-lg font-bold text-[#1E3954] mb-2">
               Peringatan Pelanggaran Tab!
             </h3>
-            <p className="text-xs sm:text-sm text-zinc-600 mb-4 leading-relaxed">
+            <p className="text-xs sm:text-sm text-[#4E779F] mb-4 leading-relaxed">
               Sistem mencatat Anda telah meninggalkan jendela ujian MMO. Setiap perpindahan tab tercatat langsung di dasbor pengawas panitia.
             </p>
-            <div className="bg-zinc-50 border border-zinc-200 p-3 rounded-lg mb-5 text-xs text-zinc-700">
-              <span className="text-zinc-500">Akumulasi Pelanggaran:</span>{' '}
+            <div className="bg-[#FAF3E3] border border-[#E49548]/50 p-3 rounded-lg mb-5 text-xs text-[#1E3954]">
+              <span className="text-[#4E779F]">Akumulasi Pelanggaran:</span>{' '}
               <span className="font-mono font-bold text-rose-600">{strikeCount} dari {maxStrikes}</span> kali batas toleransi.
             </div>
             <button
@@ -231,7 +231,7 @@ export const AntiCheatGuard: React.FC<AntiCheatGuardProps> = ({
                 setTabSwitchedWarning(false);
                 enterFullscreen();
               }}
-              className="w-full py-2.5 px-4 bg-zinc-900 hover:bg-zinc-800 text-white font-semibold rounded-lg text-sm transition-colors cursor-pointer shadow-xs"
+              className="w-full py-2.5 px-4 bg-[#2C4B6B] hover:bg-[#243E59] text-white font-semibold rounded-xl text-sm transition-colors cursor-pointer shadow-xs border border-[#E49548]"
             >
               Saya Mengerti & Kembali Mengerjakan
             </button>
@@ -241,30 +241,30 @@ export const AntiCheatGuard: React.FC<AntiCheatGuardProps> = ({
 
       {/* Fullscreen Prompt Overlay if exited */}
       {!isFullscreen && !isLocked && !tabSwitchedWarning && (
-        <div className="fixed inset-0 z-40 bg-zinc-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="max-w-md w-full bg-white border border-amber-200 rounded-2xl p-6 shadow-2xl text-center">
-            <div className="w-12 h-12 bg-amber-50 border border-amber-200 rounded-full flex items-center justify-center mx-auto mb-3">
-              <Maximize className="w-6 h-6 text-amber-600" />
+        <div className="fixed inset-0 z-40 bg-[#1E3954]/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="max-w-md w-full bg-white border-2 border-[#E49548] rounded-2xl p-6 shadow-2xl text-center">
+            <div className="w-12 h-12 bg-[#FAF3E3] border border-[#E49548] rounded-full flex items-center justify-center mx-auto mb-3">
+              <Maximize className="w-6 h-6 text-[#CE7D30]" />
             </div>
-            <h3 className="text-base font-bold text-zinc-900 mb-1.5">
+            <h3 className="text-base font-bold text-[#1E3954] mb-1.5">
               Wajib Mode Layar Penuh
             </h3>
-            <p className="text-xs text-zinc-600 mb-4">
+            <p className="text-xs text-[#4E779F] mb-4">
               Ujian MMO mewajibkan mode layar penuh aktif guna memastikan kejujuran dan mencegah interaksi dengan aplikasi lain.
             </p>
             <div className="flex flex-col sm:flex-row gap-2">
               <button
                 type="button"
                 onClick={enterFullscreen}
-                className="flex-1 py-2.5 px-4 bg-[#646464] hover:bg-[#525252] text-white font-semibold rounded-2xl text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                className="flex-1 py-2.5 px-4 bg-[#2C4B6B] hover:bg-[#243E59] text-white font-semibold rounded-2xl text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs border border-[#E49548]"
               >
-                <Maximize className="w-4 h-4" />
+                <Maximize className="w-4 h-4 text-[#F4E6CC]" />
                 Aktifkan Layar Penuh
               </button>
               <button
                 type="button"
                 onClick={() => setIsFullscreen(true)}
-                className="py-2.5 px-3 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-medium rounded-2xl text-xs transition-colors cursor-pointer border border-[#D5D5D5]"
+                className="py-2.5 px-3 bg-[#FAF3E3] hover:bg-[#F4E6CC] text-[#1E3954] font-semibold rounded-2xl text-xs transition-colors cursor-pointer border border-[#B8CCE0]"
                 title="Bagi pengguna browser HP atau Safari yang tidak mendukung fullscreen otomatis"
               >
                 Lanjutkan di Layar HP
@@ -276,20 +276,20 @@ export const AntiCheatGuard: React.FC<AntiCheatGuardProps> = ({
 
       {/* Complete Lockout Modal when Max Strikes Exceeded */}
       {isLocked && (
-        <div className="fixed inset-0 z-50 bg-zinc-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="max-w-lg w-full bg-white border border-rose-300 rounded-2xl p-7 shadow-2xl text-center">
+        <div className="fixed inset-0 z-50 bg-[#1E3954]/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="max-w-lg w-full bg-white border-2 border-rose-400 rounded-2xl p-7 shadow-2xl text-center">
             <div className="w-16 h-16 bg-rose-50 border border-rose-200 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
               <Lock className="w-8 h-8 text-rose-600" />
             </div>
-            <h2 className="text-xl font-bold text-zinc-900 mb-2">
+            <h2 className="text-xl font-bold text-[#1E3954] mb-2">
               Layar Ujian Terkunci Otomatis
             </h2>
-            <p className="text-sm text-zinc-600 mb-5 leading-relaxed">
+            <p className="text-sm text-[#4E779F] mb-5 leading-relaxed">
               Anda telah mencapai batas maksimal ({maxStrikes}) pelanggaran anti-cheat (perpindahan tab / jendela / aktivitas mencurigakan). Pengerjaan soal ditangguhkan.
             </p>
 
-            <form onSubmit={handleUnlockSubmit} className="space-y-3 bg-zinc-50 border border-zinc-200 p-4 rounded-xl text-left">
-              <label className="block text-xs font-medium text-zinc-700">
+            <form onSubmit={handleUnlockSubmit} className="space-y-3 bg-[#FAF3E3] border border-[#E49548]/50 p-4 rounded-xl text-left">
+              <label className="block text-xs font-semibold text-[#1E3954]">
                 Masukkan PIN Otorisasi Pengawas (Panitia MMO):
               </label>
               <div className="flex gap-2">
@@ -298,20 +298,20 @@ export const AntiCheatGuard: React.FC<AntiCheatGuardProps> = ({
                   value={pinInput}
                   onChange={(e) => setPinInput(e.target.value)}
                   placeholder="PIN Pengawas (Default: 2026)"
-                  className="flex-1 bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:border-zinc-500 font-mono"
+                  className="flex-1 bg-white border border-[#B8CCE0] rounded-lg px-3 py-2 text-sm text-[#1E3954] focus:outline-none focus:border-[#E49548] font-mono"
                 />
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-white font-semibold rounded-lg text-xs transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  className="px-4 py-2 bg-[#2C4B6B] hover:bg-[#243E59] text-white font-semibold rounded-lg text-xs transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs border border-[#E49548]"
                 >
-                  <KeyRound className="w-3.5 h-3.5" />
+                  <KeyRound className="w-3.5 h-3.5 text-[#F4E6CC]" />
                   Buka Kunci
                 </button>
               </div>
               {pinError && (
                 <p className="text-xs text-rose-600 mt-1">{pinError}</p>
               )}
-              <p className="text-[11px] text-zinc-500">
+              <p className="text-[11px] text-[#4E779F]">
                 Hubungi pengawas HMPS Matriks UMM untuk verifikasi pembukaan kunci layar.
               </p>
             </form>

@@ -146,3 +146,22 @@ export interface LiveParticipantMonitoring {
   aiIncidentReport?: string; // Selective AI Proctor report when strikes > 3
   incidentSnapshot?: string; // Snapshot photo captured during high-strike incident
 }
+
+export type FeedbackWebhookStatus = 'not_configured' | 'synced' | 'failed';
+
+export interface SiteFeedbackEntry {
+  id: string;
+  createdAt: number;
+  submittedAtWib: string;
+  participantId?: string;
+  participantName: string;
+  school: string;
+  nisnOrRegNumber: string;
+  category: OlympiadCategory;
+  stage: CompetitionStage;
+  message: string;
+  webhookStatus: FeedbackWebhookStatus;
+  webhookError?: string;
+  lastSyncAttempt?: number;
+}
+

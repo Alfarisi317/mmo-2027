@@ -2,14 +2,23 @@
 
 @layer base {
   :root {
-    --mmo-dark: #646464;
-    --mmo-light: #D5D5D5;
+    --mmo-steel-light: #4E779F;
+    --mmo-steel-mid: #3B5F84;
+    --mmo-steel-dark: #2C4B6B;
+    --mmo-steel-deep: #243E59;
+    --mmo-amber: #E49548;
+    --mmo-amber-hover: #CE7D30;
+    --mmo-cream: #F4E6CC;
+    --mmo-ivory: #FAF3E3;
+    --mmo-navy: #1E3954;
+    --mmo-exam-bg: #EBF1F6;
+    --mmo-border-soft: #B8CCE0;
   }
 
   body {
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-    color: #18181b;
-    background-color: #ffffff;
+    color: #1E3954;
+    background-color: #294664;
   }
   
   code, pre, .font-mono {
@@ -17,23 +26,30 @@
   }
 }
 
-/* Custom sleek scrollbar for minimalist neutral light gray theme */
+.mmo-poster-canvas {
+  background:
+    radial-gradient(circle at 18% 12%, rgba(244, 230, 204, 0.14), transparent 36%),
+    radial-gradient(circle at 82% 24%, rgba(228, 149, 72, 0.12), transparent 34%),
+    linear-gradient(155deg, #527CA3 0%, #3E648B 46%, #294664 100%);
+}
+
+/* Custom sleek scrollbar aligned with steel-blue & warm amber theme */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
 }
 ::-webkit-scrollbar-track {
-  background: #f4f4f5;
+  background: #DCE7F1;
 }
 ::-webkit-scrollbar-thumb {
-  background: #D5D5D5;
+  background: #4E779F;
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #646464;
+  background: #E49548;
 }
 
-/* KaTeX custom sizing and math styling to fit clean light theme */
+/* KaTeX custom sizing and math styling to fit clean high-contrast white question cards */
 .katex-display {
   margin: 0.75em 0 !important;
   overflow-x: auto;
@@ -46,7 +62,17 @@
   color: #18181b;
 }
 
-/* Force KaTeX text and all internal elements to white when inside dark containers or .katex-white */
+.katex .katex-mathml {
+  position: absolute;
+  clip: rect(1px, 1px, 1px, 1px);
+  padding: 0;
+  border: 0;
+  height: 1px;
+  width: 1px;
+  overflow: hidden;
+}
+
+/* Force KaTeX text and all internal elements to white when inside dark steel-blue selected states or .katex-white */
 .text-white .katex,
 .text-white .katex *,
 .katex-white,
@@ -73,22 +99,24 @@
   user-select: none;
 }
 
-/* MMO Smooth Curved Decorative Borders */
+/* MMO Poster Framed Surfaces */
 .mmo-card-curved {
   border-radius: 1.5rem;
-  border: 1px solid #D5D5D5;
-  background-color: #ffffff;
-  box-shadow: 0 4px 20px -2px rgba(100, 100, 100, 0.08);
+  border: 2px solid #E49548;
+  background-color: rgba(44, 75, 107, 0.9);
+  box-shadow: 0 12px 30px -6px rgba(20, 38, 58, 0.35);
 }
 
 .mmo-pill-dark {
-  background-color: #646464;
+  background-color: #2C4B6B;
   color: #ffffff;
+  border: 1px solid #E49548;
   border-radius: 9999px;
 }
 
 .mmo-pill-light {
-  background-color: #D5D5D5;
-  color: #27272a;
+  background-color: #F4E6CC;
+  color: #1E3954;
   border-radius: 9999px;
 }
+

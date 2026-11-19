@@ -374,18 +374,18 @@ export const AIProctor: React.FC<AIProctorProps> = ({
   };
 
   return (
-    <div className="bg-white border border-[#D5D5D5] rounded-3xl p-4 sm:p-5 shadow-xs space-y-3.5">
+    <div className="bg-white border-2 border-[#E49548]/60 rounded-3xl p-4 sm:p-5 shadow-xs space-y-3.5">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-          <h3 className="text-xs font-bold text-zinc-900 uppercase tracking-wider">
+          <h3 className="text-xs font-extrabold text-[#1E3954] uppercase tracking-wider">
             Pengawasan Kamera Ujian
           </h3>
         </div>
 
         <div className="flex items-center gap-1.5 text-xs">
-          <span className="text-[10px] text-zinc-500">Integritas:</span>
+          <span className="text-[10px] text-[#4E779F]">Integritas:</span>
           <span
             className={`font-mono font-bold ${
               trustScore > 85 ? 'text-emerald-700' : trustScore > 60 ? 'text-amber-700' : 'text-rose-700'
@@ -410,7 +410,7 @@ export const AIProctor: React.FC<AIProctorProps> = ({
       <canvas ref={canvasRef} className="hidden" />
 
       {/* Video Viewport */}
-      <div className="relative aspect-video bg-zinc-950 rounded-2xl overflow-hidden border border-zinc-800 flex items-center justify-center">
+      <div className="relative aspect-video bg-[#1E3954] rounded-2xl overflow-hidden border border-[#4E779F] flex items-center justify-center">
         {/* Always-Mounted Video Element to prevent Null Reference or Freezes */}
         <video
           ref={setVideoElement}
@@ -563,9 +563,9 @@ export const AIProctor: React.FC<AIProctorProps> = ({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="flex-1 px-3 py-2 rounded-xl bg-[#646464] hover:bg-[#525252] text-white text-[11px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                className="flex-1 px-3 py-2 rounded-xl bg-[#2C4B6B] hover:bg-[#243E59] text-white text-[11px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-colors border border-[#4E779F]"
               >
-                <Camera className="w-3.5 h-3.5" />
+                <Camera className="w-3.5 h-3.5 text-[#F4E6CC]" />
                 <span>Foto Selfie HP</span>
               </button>
             </div>
@@ -583,9 +583,9 @@ export const AIProctor: React.FC<AIProctorProps> = ({
 
       {/* Action shortcuts below viewport */}
       <div className="flex items-center justify-between text-[11px] pt-1">
-        <span className="text-zinc-500">
+        <span className="text-[#4E779F]">
           Status Kamera:{' '}
-          <strong className="text-zinc-800">
+          <strong className="text-[#1E3954]">
             {cameraMode === 'STREAM' && hasCameraPermission && videoPlaying
               ? 'Live Siaran Aktif (480p)'
               : cameraMode === 'PHOTO'
@@ -597,7 +597,7 @@ export const AIProctor: React.FC<AIProctorProps> = ({
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          className="text-[#646464] hover:text-zinc-950 font-semibold flex items-center gap-1 cursor-pointer underline text-[11px]"
+          className="text-[#2C4B6B] hover:text-[#CE7D30] font-semibold flex items-center gap-1 cursor-pointer underline text-[11px]"
         >
           <Camera className="w-3 h-3" />
           <span>Ambil Foto Selfie Wajah</span>
@@ -605,11 +605,11 @@ export const AIProctor: React.FC<AIProctorProps> = ({
       </div>
 
       {/* Proctor Metrics Grid */}
-      <div className="grid grid-cols-2 gap-2 text-xs text-zinc-700">
-        <div className="bg-[#fafafa] border border-[#D5D5D5] rounded-2xl p-2.5 flex items-center gap-2">
-          <Eye className="w-4 h-4 text-[#646464] shrink-0" />
+      <div className="grid grid-cols-2 gap-2 text-xs text-[#1E3954]">
+        <div className="bg-[#FAF3E3]/70 border border-[#E49548]/50 rounded-2xl p-2.5 flex items-center gap-2">
+          <Eye className="w-4 h-4 text-[#2C4B6B] shrink-0" />
           <div className="truncate">
-            <p className="text-[10px] text-zinc-500">Status Pengawas</p>
+            <p className="text-[10px] text-[#4E779F]">Status Pengawas</p>
             <p
               className={`font-semibold ${
                 hasCameraPermission || capturedPhotoUrl ? 'text-emerald-700' : 'text-amber-700'
@@ -620,10 +620,10 @@ export const AIProctor: React.FC<AIProctorProps> = ({
           </div>
         </div>
 
-        <div className="bg-[#fafafa] border border-[#D5D5D5] rounded-2xl p-2.5 flex items-center gap-2">
-          <ShieldAlert className="w-4 h-4 text-[#646464] shrink-0" />
+        <div className="bg-[#FAF3E3]/70 border border-[#E49548]/50 rounded-2xl p-2.5 flex items-center gap-2">
+          <ShieldAlert className="w-4 h-4 text-[#2C4B6B] shrink-0" />
           <div className="truncate">
-            <p className="text-[10px] text-zinc-500">Toleransi Pelanggaran</p>
+            <p className="text-[10px] text-[#4E779F]">Toleransi Pelanggaran</p>
             <p
               className={`font-semibold ${
                 strikeCount === 0

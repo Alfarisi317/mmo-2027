@@ -1,4 +1,11 @@
-import { LiveParticipantMonitoring, Question, OlympiadCategory } from '../types';
+import {
+  CompetitionStage,
+  LiveParticipantMonitoring,
+  OlympiadCategory,
+  Question,
+  SiteFeedbackEntry,
+} from '../types';
+import { StructuredBankSoalItem, WordParseResult } from '../utils/wordEquationParser';
 
 export const ApiService = {
   // --- Participants ---
@@ -108,7 +115,7 @@ export const ApiService = {
     localStorage.removeItem('mmo_live_participants');
   },
 
-  // --- Questions ---
+  // --- Questions (Full Bank Management & Word Importer) ---
   async getQuestions(): Promise<Question[] | null> {
     try {
       const res = await fetch('/api/questions');
@@ -124,87 +131,217 @@ export const ApiService = {
     return null;
   },
 
-  async addQuestion(question: Question): Promise<Question[] | null> {
+  async parseWordDocx(
+    file: File,
+    category: OlympiadCategory,
+    stage: CompetitionStage
+  ): Promise<{ success: boolean; data?: WordParseResult; error?: string }> {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('category', category);
+      formData.append('stage', stage);
+      const res = await fetch('/api/admin/parse-docx', {
+        method: 'POST',
+        body: formData,
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        return { success: false, error: json.error || 'Gagal memproses berkas .docx.' };
+      }
+      return { success: true, data: json.data };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Gagal menghubungi server saat membaca berkas Word.' };
+    }
+  },
+
+  async parseWordTextWithAI(
+    rawText: string,
+    category: OlympiadCategory,
+    stage: CompetitionStage
+  ): Promise<{
+    success: boolean;
+    data?: { jsonOutput: StructuredBankSoalItem[]; parseResult: WordParseResult };
+    error?: string;
+  }> {
+    try {
+      const res = await fetch('/api/admin/parse-word-ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rawText, category, stage }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        return {
+          success: false,
+          error: json.error || 'Gagal mengurai teks soal menggunakan AI.',
+        };
+      }
+      return { success: true, data: json.data };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err?.message || 'Gagal menghubungi server saat memproses AI Word parser.',
+      };
+    }
+  },
+
+  async parsePdfOrImageWithAI(
+    file: File,
+    category: OlympiadCategory,
+    stage: CompetitionStage
+  ): Promise<{
+    success: boolean;
+    data?: { jsonOutput: StructuredBankSoalItem[]; parseResult: WordParseResult };
+    error?: string;
+  }> {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('category', category);
+      formData.append('stage', stage);
+      const res = await fetch('/api/admin/parse-pdf-image-ai', {
+        method: 'POST',
+        body: formData,
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        return {
+          success: false,
+          error: json.error || 'Gagal mengekstrak soal dari PDF atau gambar.',
+        };
+      }
+      return { success: true, data: json.data };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err?.message || 'Gagal menghubungi server saat membaca berkas PDF/gambar.',
+      };
+    }
+  },
+
+  async fetchQuestionsFromGoogleSheets(
+    url: string,
+    category: OlympiadCategory,
+    stage: CompetitionStage
+  ): Promise<{ success: boolean; data?: WordParseResult; error?: string }> {
+    try {
+      const res = await fetch('/api/admin/fetch-sheets-questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, category, stage }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        return {
+          success: false,
+          error: json.error || 'Gagal menarik soal dari Google Sheets.',
+        };
+      }
+      return { success: true, data: json.data };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err?.message || 'Gagal menghubungi server saat mengakses Google Sheets.',
+      };
+    }
+  },
+
+  async bulkSaveQuestions(
+    questions: Question[],
+    mode: 'append' | 'replace_all' | 'replace_packet' = 'append',
+    category?: OlympiadCategory,
+    stage?: CompetitionStage
+  ): Promise<{ success: boolean; data?: Question[]; error?: string }> {
+    try {
+      const res = await fetch('/api/questions/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ questions, mode, category, stage }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        return { success: false, error: json.error || 'Gagal menyimpan daftar soal.' };
+      }
+      return { success: true, data: json.data };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Gagal menyimpan soal ke server.' };
+    }
+  },
+
+  async addQuestion(question: Question): Promise<{ success: boolean; data?: Question[]; error?: string }> {
     try {
       const res = await fetch('/api/questions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(question),
       });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && Array.isArray(json.data)) {
-          return json.data;
-        }
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        return { success: false, error: json.error || 'Gagal menambahkan soal.' };
       }
-    } catch {
-      // ignore
+      return { success: true, data: json.data };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Gagal menghubungi server.' };
     }
-    return null;
   },
 
-  async deleteQuestion(id: string): Promise<Question[] | null> {
+  async updateQuestion(id: string, question: Partial<Question>): Promise<{ success: boolean; data?: Question[]; error?: string }> {
     try {
-      const res = await fetch(`/api/questions/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && Array.isArray(json.data)) {
-          return json.data;
-        }
-      }
-    } catch {
-      // ignore
-    }
-    return null;
-  },
-
-  async updateQuestion(id: string, data: Partial<Question>): Promise<Question[] | null> {
-    try {
-      const res = await fetch(`/api/questions/${id}`, {
+      const res = await fetch(`/api/questions/${encodeURIComponent(id)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: JSON.stringify(question),
       });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && Array.isArray(json.data)) {
-          return json.data;
-        }
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        return { success: false, error: json.error || 'Gagal memperbarui soal.' };
       }
-    } catch {
-      // ignore
+      return { success: true, data: json.data };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Gagal menghubungi server.' };
     }
-    return null;
   },
 
-  async scrubQuestions(): Promise<Question[] | null> {
+  async deleteQuestion(id: string): Promise<{ success: boolean; data?: Question[]; error?: string }> {
     try {
-      const res = await fetch('/api/questions/scrub', { method: 'POST' });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && Array.isArray(json.data)) {
-          return json.data;
-        }
+      const res = await fetch(`/api/questions/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        return { success: false, error: json.error || 'Gagal menghapus soal.' };
       }
-    } catch {
-      // ignore
+      return { success: true, data: json.data };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Gagal menghubungi server.' };
     }
-    return null;
   },
 
-  async resetQuestions(): Promise<Question[] | null> {
+  async clearAllQuestions(): Promise<{ success: boolean; data?: Question[]; error?: string }> {
+    try {
+      const res = await fetch('/api/questions/clear-all', { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        return { success: false, error: json.error || 'Gagal mengosongkan Bank Soal.' };
+      }
+      return { success: true, data: json.data || [] };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Gagal menghubungi server.' };
+    }
+  },
+
+  async resetQuestions(): Promise<{ success: boolean; data?: Question[]; error?: string }> {
     try {
       const res = await fetch('/api/questions/reset', { method: 'POST' });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && Array.isArray(json.data)) {
-          return json.data;
-        }
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        return { success: false, error: json.error || 'Gagal mereset Bank Soal.' };
       }
-    } catch {
-      // ignore
+      return { success: true, data: json.data };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Gagal menghubungi server.' };
     }
-    return null;
   },
 
   // --- Proctor Broadcasts & Participant Warnings ---
@@ -337,70 +474,141 @@ export const ApiService = {
     }
   },
 
-  // Upload and parse questions from MS Word (.docx) with AI KaTeX conversion
-  async uploadWordQuestions(
-    file: File,
-    category: OlympiadCategory = 'SMA'
-  ): Promise<{ success: boolean; count?: number; questions?: Question[]; error?: string; fallbackUsed?: boolean }> {
+  // Post-Exam Website Feedback & Google Sheets Webhook
+  async submitSiteFeedback(payload: {
+    participantId?: string;
+    participantName: string;
+    school: string;
+    nisnOrRegNumber: string;
+    category: 'SMP' | 'SMA';
+    stage: 'Penyisihan' | 'Semifinal';
+    message: string;
+  }): Promise<{ success: boolean; data?: SiteFeedbackEntry; error?: string }> {
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('category', category);
-
-      const res = await fetch('/api/admin/upload-word', {
+      const res = await fetch('/api/feedback', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       });
-
       const json = await res.json();
       return json;
     } catch (err: any) {
-      return {
-        success: false,
-        error: err?.message || 'Gagal mengunggah berkas Word ke server.',
-      };
+      return { success: false, error: err?.message || 'Gagal mengirim pesan dan saran ke server.' };
     }
   },
 
-  // Parse questions directly from raw copied text (Word / clipboard) with 0 quota
-  async parseTextQuestions(
-    text: string,
-    category: OlympiadCategory = 'SMA'
-  ): Promise<{ success: boolean; count?: number; questions?: Question[]; error?: string }> {
+  async getSiteFeedbackList(): Promise<{
+    success: boolean;
+    data: SiteFeedbackEntry[];
+    webhookUrl: string;
+  }> {
     try {
-      const res = await fetch('/api/admin/parse-text-questions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, category }),
+      const res = await fetch('/api/feedback');
+      if (res.ok) {
+        const json = await res.json();
+        return {
+          success: Boolean(json.success),
+          data: Array.isArray(json.data) ? json.data : [],
+          webhookUrl: typeof json.webhookUrl === 'string' ? json.webhookUrl : '',
+        };
+      }
+    } catch {
+      // ignore
+    }
+    return { success: false, data: [], webhookUrl: '' };
+  },
+
+  async deleteSiteFeedback(id: string): Promise<boolean> {
+    try {
+      const res = await fetch(`/api/feedback/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
       });
-      const json = await res.json();
-      return json;
-    } catch (err: any) {
-      return {
-        success: false,
-        error: err?.message || 'Gagal memproses teks soal.',
-      };
+      return res.ok;
+    } catch {
+      return false;
     }
   },
 
-  // Save bulk questions to server (Append or Replace All)
-  async bulkSaveQuestions(
-    questions: Question[],
-    mode: 'append' | 'replace' = 'append'
-  ): Promise<{ success: boolean; count?: number; data?: Question[]; error?: string }> {
+  async clearAllSiteFeedback(): Promise<boolean> {
     try {
-      const res = await fetch('/api/questions/bulk', {
+      const res = await fetch('/api/feedback', {
+        method: 'DELETE',
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
+  async saveFeedbackWebhookUrl(webhookUrl: string): Promise<{
+    success: boolean;
+    webhookUrl?: string;
+    error?: string;
+  }> {
+    try {
+      const res = await fetch('/api/feedback/webhook', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ questions, mode }),
+        body: JSON.stringify({ webhookUrl }),
       });
       const json = await res.json();
       return json;
     } catch (err: any) {
-      return {
-        success: false,
-        error: err?.message || 'Gagal menyimpan paket soal ke server.',
-      };
+      return { success: false, error: err?.message || 'Gagal menyimpan URL Webhook.' };
+    }
+  },
+
+  async testFeedbackWebhook(webhookUrl?: string): Promise<{
+    success: boolean;
+    message?: string;
+    error?: string;
+  }> {
+    try {
+      const res = await fetch('/api/feedback/webhook/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ webhookUrl }),
+      });
+      const json = await res.json();
+      return json;
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Gagal melakukan tes webhook Google Sheets.' };
+    }
+  },
+
+  async syncAllFeedbackToWebhook(): Promise<{
+    success: boolean;
+    syncedCount?: number;
+    failedCount?: number;
+    lastError?: string;
+    data?: SiteFeedbackEntry[];
+    error?: string;
+  }> {
+    try {
+      const res = await fetch('/api/feedback/sync-all', {
+        method: 'POST',
+      });
+      const json = await res.json();
+      return json;
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Gagal menyinkronkan pesan ke Google Sheets.' };
+    }
+  },
+
+  async syncSingleFeedbackToWebhook(id: string): Promise<{
+    success: boolean;
+    data?: SiteFeedbackEntry;
+    error?: string;
+  }> {
+    try {
+      const res = await fetch(`/api/feedback/${encodeURIComponent(id)}/sync`, {
+        method: 'POST',
+      });
+      const json = await res.json();
+      return json;
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Gagal menyinkronkan baris ke Google Sheets.' };
     }
   },
 };
+

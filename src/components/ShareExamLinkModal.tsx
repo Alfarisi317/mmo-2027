@@ -116,12 +116,12 @@ export const ShareExamLinkModal: React.FC<ShareExamLinkModalProps> = ({ isOpen, 
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in">
-      <div className="bg-white border border-[#D5D5D5] rounded-3xl w-full max-w-xl shadow-2xl p-5 sm:p-7 relative my-auto">
+    <div className="fixed inset-0 z-50 bg-[#1E3954]/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in">
+      <div className="bg-white border-2 border-[#E49548] rounded-3xl w-full max-w-xl shadow-2xl p-5 sm:p-7 relative my-auto text-[#1E3954]">
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-5 right-5 p-2 rounded-2xl bg-zinc-100 hover:bg-zinc-200 text-zinc-600 transition-colors cursor-pointer"
+          className="absolute top-5 right-5 p-2 rounded-2xl bg-[#FAF3E3] hover:bg-[#F4E6CC] border border-[#E49548]/50 text-[#1E3954] transition-colors cursor-pointer"
           aria-label="Tutup"
         >
           <X className="w-4 h-4" />
@@ -129,27 +129,27 @@ export const ShareExamLinkModal: React.FC<ShareExamLinkModalProps> = ({ isOpen, 
 
         {/* Header */}
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-2xl bg-[#646464] text-white flex items-center justify-center shadow-xs">
-            <QrCode className="w-5 h-5 text-white" />
+          <div className="w-10 h-10 rounded-2xl bg-[#2C4B6B] border-2 border-[#E49548] text-[#F4E6CC] flex items-center justify-center shadow-xs">
+            <QrCode className="w-5 h-5 text-[#E49548]" />
           </div>
           <div>
-            <h3 className="text-base font-bold text-zinc-900 leading-tight">
+            <h3 className="text-base font-extrabold text-[#1E3954] leading-tight">
               Akses Pengerjaan Ujian Peserta MMO 2027
             </h3>
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-[#4E779F]">
               Sinkronisasi Peserta ke Dasbor Pengawas secara Real-Time
             </p>
           </div>
         </div>
 
         {/* Tab Selection: Laptop Test vs Mobile HP */}
-        <div className="grid grid-cols-2 gap-2 p-1 bg-zinc-100 rounded-2xl mb-4 text-xs font-semibold">
+        <div className="grid grid-cols-2 gap-2 p-1 bg-[#2C4B6B] border border-[#E49548] rounded-2xl mb-4 text-xs font-bold">
           <button
             onClick={() => setMode('laptop_test')}
             className={`py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
               mode === 'laptop_test'
-                ? 'bg-white text-zinc-900 shadow-xs'
-                : 'text-zinc-600 hover:text-zinc-900'
+                ? 'bg-[#F4E6CC] text-[#1E3954] shadow-xs'
+                : 'text-[#DCE9F5] hover:text-white'
             }`}
           >
             <Laptop className="w-3.5 h-3.5 text-emerald-600" />
@@ -159,11 +159,11 @@ export const ShareExamLinkModal: React.FC<ShareExamLinkModalProps> = ({ isOpen, 
             onClick={() => setMode('mobile')}
             className={`py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
               mode === 'mobile'
-                ? 'bg-white text-zinc-900 shadow-xs'
-                : 'text-zinc-600 hover:text-zinc-900'
+                ? 'bg-[#F4E6CC] text-[#1E3954] shadow-xs'
+                : 'text-[#DCE9F5] hover:text-white'
             }`}
           >
-            <Smartphone className="w-3.5 h-3.5 text-[#646464]" />
+            <Smartphone className="w-3.5 h-3.5 text-[#CE7D30]" />
             <span>Akses dari HP (Scan QR)</span>
           </button>
         </div>
@@ -229,8 +229,8 @@ export const ShareExamLinkModal: React.FC<ShareExamLinkModalProps> = ({ isOpen, 
             </div>
 
             {/* QR Code and Quick Scan Section */}
-            <div className="bg-[#fafafa] border border-[#D5D5D5] rounded-2xl p-4 flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left">
-              <div className="bg-white p-2 rounded-2xl border border-zinc-200 shadow-xs shrink-0">
+            <div className="bg-[#FAF3E3] border border-[#E49548]/60 rounded-2xl p-4 flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left">
+              <div className="bg-white p-2 rounded-2xl border border-[#B8CCE0] shadow-xs shrink-0">
                 {qrDataUrl ? (
                   <img
                     src={qrDataUrl}
@@ -238,7 +238,7 @@ export const ShareExamLinkModal: React.FC<ShareExamLinkModalProps> = ({ isOpen, 
                     className="w-36 h-36 rounded-xl object-contain mx-auto"
                   />
                 ) : (
-                  <div className="w-36 h-36 flex items-center justify-center text-xs text-zinc-400">
+                  <div className="w-36 h-36 flex items-center justify-center text-xs text-[#4E779F]">
                     Membuat QR...
                   </div>
                 )}
@@ -248,12 +248,12 @@ export const ShareExamLinkModal: React.FC<ShareExamLinkModalProps> = ({ isOpen, 
                   <Smartphone className="w-3.5 h-3.5 text-emerald-600" />
                   <span>Scan QR Code dari HP</span>
                 </div>
-                <p className="text-xs text-zinc-600 leading-relaxed">
+                <p className="text-xs text-[#4E779F] leading-relaxed">
                   Buka kamera HP atau Google Lens, arahkan ke QR Code di samping.
                 </p>
                 <div className="pt-1">
-                  <span className="text-[10px] text-zinc-400 block font-mono">Tautan Resmi Peserta:</span>
-                  <span className="text-[11px] font-mono text-zinc-800 truncate block max-w-[260px]">
+                  <span className="text-[10px] text-[#4E779F] block font-mono">Tautan Resmi Peserta:</span>
+                  <span className="text-[11px] font-mono text-[#1E3954] truncate block max-w-[260px]">
                     {participantUrl}
                   </span>
                 </div>
@@ -266,14 +266,14 @@ export const ShareExamLinkModal: React.FC<ShareExamLinkModalProps> = ({ isOpen, 
                 type="text"
                 readOnly
                 value={participantUrl}
-                className="flex-1 bg-zinc-50 border border-[#D5D5D5] rounded-2xl px-3.5 py-2.5 text-xs text-zinc-800 font-mono truncate select-all focus:outline-none"
+                className="flex-1 bg-[#FAF3E3]/60 border border-[#B8CCE0] rounded-2xl px-3.5 py-2.5 text-xs text-[#1E3954] font-mono truncate select-all focus:outline-none"
               />
               <button
                 onClick={handleCopyParticipant}
-                className={`px-4 py-2.5 rounded-2xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs whitespace-nowrap ${
+                className={`px-4 py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs whitespace-nowrap ${
                   copiedParticipant
                     ? 'bg-emerald-600 text-white'
-                    : 'bg-[#646464] hover:bg-[#525252] text-white border border-[#646464]'
+                    : 'bg-[#E49548] hover:bg-[#CE7D30] text-[#1E3954] border border-[#CE7D30]'
                 }`}
               >
                 {copiedParticipant ? (
@@ -293,16 +293,16 @@ export const ShareExamLinkModal: React.FC<ShareExamLinkModalProps> = ({ isOpen, 
         )}
 
         {/* Modal Footer */}
-        <div className="flex items-center justify-between pt-4 mt-4 border-t border-zinc-200">
+        <div className="flex items-center justify-between pt-4 mt-4 border-t border-[#EBF1F6]">
           <button
             onClick={handleCopyProctor}
-            className="text-[11px] text-zinc-500 hover:text-zinc-800 flex items-center gap-1 underline cursor-pointer"
+            className="text-[11px] text-[#4E779F] hover:text-[#1E3954] flex items-center gap-1 underline cursor-pointer font-semibold"
           >
             {copiedProctor ? 'Link Pengawas Tersalin!' : 'Salin Link Pengawas'}
           </button>
           <button
             onClick={onClose}
-            className="px-5 py-2 rounded-2xl bg-[#646464] hover:bg-[#525252] text-white text-xs font-semibold transition-all cursor-pointer shadow-xs border border-[#646464]"
+            className="px-5 py-2 rounded-2xl bg-[#2C4B6B] hover:bg-[#243E59] text-white text-xs font-bold transition-all cursor-pointer shadow-xs border border-[#E49548]"
           >
             Tutup
           </button>

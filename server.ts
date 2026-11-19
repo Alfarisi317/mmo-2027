@@ -4,10 +4,16 @@ import { fileURLToPath } from 'url';
 import os from 'os';
 import fs from 'fs';
 import multer from 'multer';
-import mammoth from 'mammoth';
-import JSZip from 'jszip';
-import { GoogleGenAI, ThinkingLevel } from '@google/genai';
+import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
 import { INITIAL_QUESTIONS_DATA } from './src/data/questions.js';
+import { sanitizeMathString } from './src/utils/mathSanitizer.js';
+import {
+  StructuredBankSoalItem,
+  convertStructuredJsonToDrafts,
+  parseDocxBufferToDrafts,
+} from './src/utils/wordEquationParser.js';
+import { parseSpreadsheetBufferToDrafts } from './src/utils/questionSpreadsheet.js';
+import type { SiteFeedbackEntry } from './src/types/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,8 +31,18 @@ const ai = new GoogleGenAI({
   },
 });
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+
+const uploadDocx = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 },
+});
+
+const uploadMedia = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+});
 
 // Network information for mobile device connection (LAN IP / Wi-Fi)
 app.get('/api/network-info', (_req, res) => {
@@ -49,7 +65,40 @@ app.get('/api/network-info', (_req, res) => {
 // In-memory data store for multi-device synchronization (Phone <-> Laptop)
 // Starts EMPTY so no random mock participants appear unless actually submitted or tested
 let participants: any[] = [];
-let questions = [...INITIAL_QUESTIONS_DATA];
+let questions: any[] = [...INITIAL_QUESTIONS_DATA];
+const QUESTIONS_STORE_FILE = path.join(os.tmpdir(), 'mmo_questions_bank.json');
+
+function loadQuestionsState(): void {
+  try {
+    if (fs.existsSync(QUESTIONS_STORE_FILE)) {
+      const raw = fs.readFileSync(QUESTIONS_STORE_FILE, 'utf-8');
+      const data = JSON.parse(raw);
+      if (Array.isArray(data.questions)) {
+        questions = data.questions;
+      }
+    }
+  } catch {
+    // Fallback to INITIAL_QUESTIONS_DATA
+  }
+}
+
+function saveQuestionsState(): void {
+  try {
+    fs.writeFileSync(
+      QUESTIONS_STORE_FILE,
+      JSON.stringify({
+        questions,
+        updatedAt: Date.now(),
+      }),
+      'utf-8'
+    );
+  } catch {
+    // Ignore read-only filesystem errors
+  }
+}
+
+loadQuestionsState();
+
 let currentBroadcast: { message: string; timestamp: number } | null = null;
 const participantWarnings: Record<string, { message: string; timestamp: number }> = {};
 
@@ -116,1272 +165,560 @@ app.delete('/api/participants', (req, res) => {
   res.json({ success: true, message: 'All participants cleared' });
 });
 
-// Questions API
-app.get('/api/questions', (req, res) => {
-  const sanitized = questions.map((q) => ({
+function sanitizeServerQuestion(q: any) {
+  return {
     ...q,
-    text: scrubEquationShadowDuplicates(q.text || ''),
-    explanation: scrubEquationShadowDuplicates(q.explanation || ''),
-    formulaLatex: scrubEquationShadowDuplicates(q.formulaLatex || ''),
+    text: sanitizeMathString(q.text || ''),
+    explanation: sanitizeMathString(q.explanation || ''),
+    formulaLatex: sanitizeMathString(q.formulaLatex || ''),
     options: Array.isArray(q.options)
       ? q.options.map((opt: any) => ({
           ...opt,
-          text: scrubEquationShadowDuplicates(opt.text || ''),
+          text: sanitizeMathString(opt.text || ''),
         }))
       : q.options,
-  }));
+  };
+}
+
+// Questions API (Read & Full Management)
+app.get('/api/questions', (_req, res) => {
+  loadQuestionsState();
+  const sanitized = questions.map(sanitizeServerQuestion);
   res.json({ success: true, data: sanitized });
 });
 
-app.post('/api/questions', (req, res) => {
-  const newQ = req.body;
-  if (!newQ || !newQ.text) {
-    return res.status(400).json({ success: false, error: 'Invalid question' });
-  }
-  questions.unshift(newQ);
-  res.json({ success: true, data: questions });
-});
-
-app.delete('/api/questions/:id', (req, res) => {
-  const { id } = req.params;
-  questions = questions.filter((q) => q.id !== id);
-  res.json({ success: true, data: questions });
-});
-
-// Update single question by ID (with automatic equation deduplication)
-app.put('/api/questions/:id', (req, res) => {
-  const { id } = req.params;
-  const updateData = req.body;
-  const idx = questions.findIndex((q) => q.id === id);
-  if (idx === -1) {
-    return res.status(404).json({ success: false, error: 'Soal tidak ditemukan di bank soal.' });
-  }
-
-  // Scrub duplicate equation artifacts
-  if (updateData.text) updateData.text = scrubEquationShadowDuplicates(updateData.text);
-  if (updateData.explanation) updateData.explanation = scrubEquationShadowDuplicates(updateData.explanation);
-  if (updateData.formulaLatex !== undefined) updateData.formulaLatex = scrubEquationShadowDuplicates(updateData.formulaLatex || '');
-  if (Array.isArray(updateData.options)) {
-    updateData.options = updateData.options.map((opt: any) => ({
-      ...opt,
-      text: scrubEquationShadowDuplicates(opt.text || ''),
-    }));
-  }
-
-  questions[idx] = { ...questions[idx], ...updateData };
-  res.json({ success: true, data: questions, updatedQuestion: questions[idx] });
-});
-
-// One-click batch scrub for all questions in bank
-app.post('/api/questions/scrub', (_req, res) => {
-  questions = questions.map((q) => ({
-    ...q,
-    text: scrubEquationShadowDuplicates(q.text || ''),
-    explanation: scrubEquationShadowDuplicates(q.explanation || ''),
-    formulaLatex: scrubEquationShadowDuplicates(q.formulaLatex || ''),
-    options: Array.isArray(q.options)
-      ? q.options.map((opt: any) => ({
-          ...opt,
-          text: scrubEquationShadowDuplicates(opt.text || ''),
-        }))
-      : q.options,
-  }));
-  res.json({ success: true, count: questions.length, data: questions });
-});
-
-app.post('/api/questions/reset', (req, res) => {
-  questions = [...INITIAL_QUESTIONS_DATA];
-  res.json({ success: true, data: questions });
-});
-
-// Bulk update questions (Append or Replace All from Word Importer)
-app.post('/api/questions/bulk', (req, res) => {
-  const { questions: newQuestions, mode } = req.body;
-  if (!Array.isArray(newQuestions)) {
-    return res.status(400).json({ success: false, error: 'Data soal tidak valid.' });
-  }
-
-  const cleanedQuestions = newQuestions.map((q) => ({
-    ...q,
-    text: scrubEquationShadowDuplicates(q.text || ''),
-    explanation: scrubEquationShadowDuplicates(q.explanation || ''),
-    formulaLatex: scrubEquationShadowDuplicates(q.formulaLatex || ''),
-    options: Array.isArray(q.options)
-      ? q.options.map((opt: any) => ({
-          ...opt,
-          text: scrubEquationShadowDuplicates(opt.text || ''),
-        }))
-      : q.options,
-  }));
-
-  if (mode === 'replace') {
-    questions = [...cleanedQuestions];
-  } else {
-    // Append mode: avoid duplicate IDs
-    const existingIds = new Set(questions.map((q) => q.id));
-    const filteredNew = cleanedQuestions.filter((q) => !existingIds.has(q.id));
-    questions = [...filteredNew, ...questions];
-  }
-
-  res.json({ success: true, count: questions.length, data: questions });
-});
-
-// Helper to repair invalid unescaped LaTeX backslashes inside JSON string literals
-function repairJsonLatexEscapes(jsonStr: string): string {
-  let result = '';
-  let inString = false;
-  let i = 0;
-  const len = jsonStr.length;
-
-  while (i < len) {
-    const char = jsonStr[i];
-
-    if (!inString) {
-      if (char === '"') {
-        inString = true;
-      }
-      result += char;
-      i++;
-      continue;
-    }
-
-    // Inside a JSON string literal
-    if (char === '"') {
-      let backslashCount = 0;
-      let j = i - 1;
-      while (j >= 0 && jsonStr[j] === '\\') {
-        backslashCount++;
-        j--;
-      }
-      if (backslashCount % 2 === 0) {
-        inString = false;
-      }
-      result += char;
-      i++;
-      continue;
-    }
-
-    if (char === '\\') {
-      const next = jsonStr[i + 1];
-      if (next === undefined) {
-        result += '\\\\';
-        i++;
-        continue;
-      }
-
-      // Check if already an escaped backslash: \\
-      if (next === '\\') {
-        result += '\\\\';
-        i += 2;
-        continue;
-      }
-
-      // Check if escaped quote: \"
-      if (next === '"') {
-        result += '\\"';
-        i += 2;
-        continue;
-      }
-
-      // Check for valid Unicode escape: \uXXXX
-      if (next === 'u' && /^[0-9a-fA-F]{4}/.test(jsonStr.substring(i + 2, i + 6))) {
-        result += jsonStr.substring(i, i + 6);
-        i += 6;
-        continue;
-      }
-
-      // Check for LaTeX commands that conflict with JSON escapes (like \frac, \binom, \times, \text, \tau, etc.)
-      const peekAhead = jsonStr.substring(i + 1, i + 10);
-      const isLatexCommand = /^[a-zA-Z]{2,}/.test(peekAhead);
-      if (isLatexCommand) {
-        result += '\\\\';
-        i++;
-        continue;
-      }
-
-      // Standard JSON escapes: \/, \b, \f, \n, \r, \t
-      if (['/', 'b', 'f', 'n', 'r', 't'].includes(next)) {
-        result += '\\' + next;
-        i += 2;
-        continue;
-      }
-
-      // Any other backslash is an INVALID escape in JSON (e.g. \s in \sqrt, \a in \alpha, \{, \}, etc.)
-      result += '\\\\';
-      i++;
-      continue;
-    }
-
-    result += char;
-    i++;
-  }
-
-  return result;
-}
-
-// Safely parse JSON array of questions with multi-stage fallback and LaTeX repair
-function parseQuestionsJsonSafely(rawText: string): any[] {
-  let clean = rawText.trim();
-  if (clean.startsWith('```json')) clean = clean.slice(7);
-  else if (clean.startsWith('```')) clean = clean.slice(3);
-  if (clean.endsWith('```')) clean = clean.slice(0, -3);
-  clean = clean.trim();
-
-  // Attempt 1: Direct JSON.parse
+// Parse uploaded Microsoft Word (.docx) file with native OMML Equations -> LaTeX KaTeX drafts
+app.post('/api/admin/parse-docx', uploadDocx.single('file'), async (req, res) => {
   try {
-    const res = JSON.parse(clean);
-    if (Array.isArray(res)) return res;
-    if (res && Array.isArray(res.questions)) return res.questions;
-  } catch {
-    // continue
-  }
-
-  // Attempt 2: Smart LaTeX escape repair
-  try {
-    const repaired = repairJsonLatexEscapes(clean);
-    const res = JSON.parse(repaired);
-    if (Array.isArray(res)) return res;
-    if (res && Array.isArray(res.questions)) return res.questions;
-  } catch {
-    // continue
-  }
-
-  // Attempt 3: Regex match array chunk + LaTeX repair
-  const arrMatch = clean.match(/\[\s*\{[\s\S]*\}\s*\]/);
-  if (arrMatch) {
-    try {
-      const repaired = repairJsonLatexEscapes(arrMatch[0]);
-      const res = JSON.parse(repaired);
-      if (Array.isArray(res)) return res;
-    } catch {
-      // continue
-    }
-  }
-
-  // Attempt 4: Aggressive backslash replacement (replace any \ not followed by " or \)
-  try {
-    const aggressive = clean.replace(/\\(?!["\\])/g, '\\\\');
-    const res = JSON.parse(aggressive);
-    if (Array.isArray(res)) return res;
-  } catch {
-    // continue
-  }
-
-  throw new Error('Naskah soal memuat notasi simbol/rumus matematika yang belum ter-escape dengan benar. Silakan coba klik tombol "Coba Proses Ulang".');
-}
-
-// Helper to deduplicate identical adjacent lines (e.g. repeated formula blocks)
-function deduplicateAdjacentLines(text: string): string {
-  if (!text) return '';
-  const lines = text.split('\n');
-  const result: string[] = [];
-  for (let i = 0; i < lines.length; i++) {
-    const current = lines[i];
-    const prev = result.length > 0 ? result[result.length - 1] : null;
-    if (prev !== null && current.trim() && current.trim() === prev.trim()) {
-      continue; // Skip exact duplicate adjacent line
-    }
-    result.push(current);
-  }
-  return result.join('\n');
-}
-
-// Universal scrubber for equation shadow text and duplicate symbol artifacts
-function scrubEquationShadowDuplicates(text: string): string {
-  if (!text) return '';
-
-  let s = text.trim();
-
-  // 1. Remove duplicate adjacent lines first
-  s = deduplicateAdjacentLines(s);
-
-  // 1b. Direct clean of linear fractions with attached or space-separated shadow:
-  // e.g. "2013/7000 70002013", "2013/7000 20137000", "2013/7000 7000", "2013/7000 2013"
-  s = s.replace(
-    /\b(\d{1,6})\s*\/\s*(\d{1,6})\b\s*([0-9]+)/g,
-    (full, num, den, shadow) => {
-      const cleanNum = num.replace(/\s+/g, '');
-      const cleanDen = den.replace(/\s+/g, '');
-      const cleanShadow = shadow.replace(/\s+/g, '');
-      if (
-        cleanShadow === cleanNum + cleanDen ||
-        cleanShadow === cleanDen + cleanNum ||
-        cleanShadow === cleanNum ||
-        cleanShadow === cleanDen ||
-        cleanShadow.includes(cleanNum) ||
-        cleanShadow.includes(cleanDen)
-      ) {
-        return `$\\frac{${num}}{${den}}$ `;
-      }
-      return full;
-    }
-  );
-
-  // 1c. Linear fraction without space where denominator is concatenated with shadow: "2013/700070002013"
-  s = s.replace(
-    /\b(\d{1,6})\s*\/\s*(\d{2,15})/g,
-    (full, num, denAndShadow) => {
-      for (let len = 1; len <= Math.min(6, denAndShadow.length - 1); len++) {
-        const testDen = denAndShadow.slice(0, len);
-        const testShadow = denAndShadow.slice(len);
-        if (
-          testShadow === testDen + num ||
-          testShadow === num + testDen ||
-          testShadow === testDen ||
-          testShadow === num
-        ) {
-          return `$\\frac{${num}}{${testDen}}$ `;
-        }
-      }
-      return full;
-    }
-  );
-
-  // 1d. Fraction followed by shadow text composed of its numerator & denominator
-  // e.g. "Jika \frac{2013}{7000} 70002013 ditulis" or "$\frac{2013}{7000} 70002013$"
-  s = s.replace(
-    /(\$?)\\frac\s*\{([^}]+)\}\s*\{([^}]+)\}(\$?)\s*([0-9a-zA-Z]+)(\$?)/g,
-    (full, _openDollar, num, den, _midDollar, shadow, _closeDollar) => {
-      const cleanNum = num.replace(/\s+/g, '');
-      const cleanDen = den.replace(/\s+/g, '');
-      const cleanShadow = shadow.replace(/\s+/g, '');
-
-      const isShadow =
-        cleanShadow === cleanNum + cleanDen ||
-        cleanShadow === cleanDen + cleanNum ||
-        cleanShadow === cleanNum ||
-        cleanShadow === cleanDen ||
-        cleanShadow.includes(cleanNum) ||
-        cleanShadow.includes(cleanDen);
-
-      if (isShadow) {
-        return `$\\frac{${num}}{${den}}$ `;
-      }
-      return full;
-    }
-  );
-
-  // Also clean shadow inside existing math formula without outer dollars
-  s = s.replace(
-    /\\frac\s*\{([^}]+)\}\s*\{([^}]+)\}\s*([0-9a-zA-Z]+)/g,
-    (full, num, den, shadow) => {
-      const cleanNum = num.replace(/\s+/g, '');
-      const cleanDen = den.replace(/\s+/g, '');
-      const cleanShadow = shadow.replace(/\s+/g, '');
-      if (
-        cleanShadow === cleanNum + cleanDen ||
-        cleanShadow === cleanDen + cleanNum ||
-        cleanShadow === cleanNum ||
-        cleanShadow === cleanDen ||
-        cleanShadow.includes(cleanNum) ||
-        cleanShadow.includes(cleanDen)
-      ) {
-        return `\\frac{${num}}{${den}} `;
-      }
-      return full;
-    }
-  );
-
-  // Explicit residue removal for known Word artifacts
-  s = s.replace(/\b70002013\b\s*/g, '');
-  s = s.replace(/\b20137000\b\s*/g, '');
-
-  // 1e. Full option string deduplication (for short option texts or numbers)
-  const bare = s.replace(/^\$+|\$+$/g, '').trim();
-
-  // Pure single-digit repeated: "11" -> "1", "$11$" -> "1", "$1$ 1" -> "1", "$1$1" -> "1"
-  if (/^(\d)\1$/.test(bare) || /^\$*(\d)\$*\s*\1$/.test(s.trim())) {
-    return bare.length > 0 ? bare[0] : s;
-  }
-
-  // Multi-digit repeated number: "1515" -> "15", "7272" -> "72", "18001800" -> "1800"
-  if (/^(\d{2,6})\1$/.test(bare)) {
-    return bare.replace(/^(\d{2,6})\1$/, '$1');
-  }
-
-  // Repeated single letter: "xx" -> "x", "$xx$" -> "x", "$x$ x" -> "x"
-  if (/^([a-zA-Z])\1$/.test(bare)) {
-    return bare[0];
-  }
-
-  // Exact half string duplication on bare string: e.g. "xkelipatan5xkelipatan5" -> "xkelipatan5"
-  if (bare.length >= 4 && bare.length % 2 === 0) {
-    const half = bare.length / 2;
-    const p1 = bare.slice(0, half);
-    const p2 = bare.slice(half);
-    if (p1 === p2) {
-      s = p1;
-    }
-  }
-
-  // Exact half with space: e.g. "x kelipatan 5x kelipatan 5" or "x kelipatan 5 x kelipatan 5"
-  const spaceParts = s.split(/\s+/);
-  if (spaceParts.length >= 2 && spaceParts.length % 2 === 0) {
-    const half = spaceParts.length / 2;
-    const p1 = spaceParts.slice(0, half).join(' ');
-    const p2 = spaceParts.slice(half).join(' ');
-    if (p1 === p2) {
-      s = p1;
-    }
-  }
-
-  // Split squeezed Indonesian words attached to variables:
-  // e.g. "xkelipatan5" -> "$x$ kelipatan 5"
-  // e.g. "xadalahgenap" -> "$x$ adalah genap"
-  // e.g. "xadalahfaktordari3" -> "$x$ adalah faktor dari 3"
-  // e.g. "xkelipatan72" -> "$x$ kelipatan 72"
-  // e.g. "xkelipatan7" -> "$x$ kelipatan 7"
-  s = s.replace(
-    /\b([a-zA-Z])(kelipatan|adalah|faktor|merupakan|bilangan|positif|bulat|ganjil|genap|prima)([a-zA-Z0-9]*)\b/gi,
-    (_m, v, word, rest) => {
-      let cleanRest = rest || '';
-      if (cleanRest.startsWith('faktordari')) {
-        cleanRest = 'faktor dari ' + cleanRest.slice(10);
-      } else if (cleanRest.startsWith('dari')) {
-        cleanRest = 'dari ' + cleanRest.slice(4);
-      }
-      return `$${v}$ ${word} ${cleanRest}`.replace(/\s+/g, ' ').trim();
-    }
-  );
-
-  // Linear fraction conversion (e.g. 2013/7000 -> $\frac{2013}{7000}$)
-  s = convertLinearFractionsToKatex(s);
-
-  // Safe Math Delimiter & Exponent Handling:
-  // Tokenize into MATH blocks ($$...$$ or $...$) vs TEXT blocks so math mode is never inverted!
-  const tokens: { type: 'MATH' | 'TEXT'; content: string; display?: boolean }[] = [];
-  const mathRegex = /(\$\$[\s\S]*?\$\$|\$[^\$\n]+?\$)/g;
-  let lastIndex = 0;
-  let match;
-
-  while ((match = mathRegex.exec(s)) !== null) {
-    if (match.index > lastIndex) {
-      tokens.push({ type: 'TEXT', content: s.substring(lastIndex, match.index) });
-    }
-    const isDisplay = match[0].startsWith('$$');
-    const rawMath = isDisplay ? match[0].slice(2, -2) : match[0].slice(1, -1);
-    tokens.push({ type: 'MATH', content: rawMath, display: isDisplay });
-    lastIndex = mathRegex.lastIndex;
-  }
-  if (lastIndex < s.length) {
-    tokens.push({ type: 'TEXT', content: s.substring(lastIndex) });
-  }
-
-  const processed = tokens.map((token) => {
-    if (token.type === 'MATH') {
-      let m = token.content;
-      m = m.replace(/²/g, '^2');
-      m = m.replace(/³/g, '^3');
-      m = m.replace(/⁴/g, '^4');
-      m = m.replace(/⁵/g, '^5');
-      m = m.replace(/⁶/g, '^6');
-      m = m.replace(/⁷/g, '^7');
-      m = m.replace(/⁸/g, '^8');
-      m = m.replace(/⁹/g, '^9');
-      m = m.replace(/⁰/g, '^0');
-      m = m.replace(/ⁿ/g, '^n');
-      m = m.replace(/\^([a-zA-Z0-9])(?![{a-zA-Z0-9])/g, '^{$1}');
-      return token.display ? `$$${m}$$` : `$${m}$`;
-    } else {
-      let t = token.content;
-      t = t.replace(/sqrt\(([^)]+)\)/gi, '$\\sqrt{$1}$');
-      t = t.replace(/√([a-zA-Z0-9]+)/g, '$\\sqrt{$1}$');
-      t = t.replace(/²/g, '$^2$');
-      t = t.replace(/³/g, '$^3$');
-      t = t.replace(/([a-zA-Z0-9\)])\s*[\^]\s*([a-zA-Z0-9]+|\{[^}]+\})/g, '$$$1^{$2}$$');
-      return t;
-    }
-  });
-
-  s = processed.join('');
-
-  // Spacing normalization around math delimiters
-  s = s.replace(/([a-zA-Z0-9])\$([^\$]+)\$/g, '$1 $$$2$$');
-  s = s.replace(/\$([^\$]+)\$([a-zA-Z0-9])/g, '$$$1$$ $2');
-
-  // Clean redundant nested dollars or empty math blocks
-  s = s.replace(/\$\s*\$/g, ' ');
-  s = s.replace(/[ \t]+/g, ' ');
-
-  return s.trim();
-}
-
-// Auto-beautify linear fractions (2013/7000 -> \frac{2013}{7000}) so they render vertically without ugly slashes
-function convertLinearFractionsToKatex(text: string): string {
-  if (!text) return '';
-  let s = text;
-
-  // 1. Parenthesized fractions: (2013)/(7000) or (a)/(b) -> \frac{2013}{7000}
-  s = s.replace(/\(([a-zA-Z0-9+\-*\\_ ]+)\)\s*\/\s*\(([a-zA-Z0-9+\-*\\_ ]+)\)/g, '$\\frac{$1}{$2}$');
-
-  // 2. Numerical fractions: 2013/7000 or 4/7 or 2013/(7x1000) -> \frac{...}{...}
-  // Exclude date patterns like 02/11/2026 or 11/02/2026
-  s = s.replace(/(?<![0-9/])(\d{1,6})\s*\/\s*\(([^)]+)\)/g, '$\\frac{$1}{$2}$');
-  s = s.replace(/(?<![0-9/])(\d{1,6})\s*\/\s*(\d{1,6})(?![0-9/])/g, '$\\frac{$1}{$2}$');
-
-  // 3. Algebraic fractions: x/y or a/b
-  s = s.replace(/(?<![a-zA-Z0-9/])([0-9]*[a-zA-Z])\s*\/\s*([0-9]*[a-zA-Z])(?![a-zA-Z0-9/])/g, '$\\frac{$1}{$2}$');
-
-  // 4. Clean up redundant adjacent dollar signs: $$ \frac... $$ -> $\frac...$
-  s = s.replace(/\$\$+/g, '$');
-  s = s.replace(/\$\s*\$/g, ' ');
-
-  // 5. Fix nested dollars inside fractions
-  s = s.replace(/\$([^\$]+)\$/g, (_m, inner) => {
-    return `$${inner.replace(/\$/g, '').trim()}$`;
-  });
-
-  return s;
-}
-
-// Extract full text from MS Word XML with OMML math equations converted to LaTeX
-function extractTextAndMathFromWordXml(xml: string): string {
-  // CRITICAL: Strip all <mc:Fallback>...</mc:Fallback> blocks!
-  // In Word OpenXML, math equations & symbols are stored in <mc:Choice> while duplicate legacy text is stored in <mc:Fallback>.
-  // Scanning both causes every symbol and number to be doubled (e.g. $x$ becomes $x$ x -> "xx", 1 becomes "11", etc.).
-  xml = xml.replace(/<mc:Fallback(?:\s[^>]*)?>[\s\S]*?<\/mc:Fallback>/gi, '');
-  xml = xml.replace(/<\/?mc:[^>]+>/gi, '');
-
-  function cleanOmmlFragment(fragment: string): string {
-    return fragment
-      .replace(/<m:t(?:\s[^>]*)?>([\s\S]*?)<\/m:t>/g, '$1')
-      .replace(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g, '$1')
-      .replace(/<[^>]+>/g, '')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&apos;/g, "'")
-      .replace(/×/g, ' \\times ')
-      .replace(/÷/g, ' \\div ')
-      .replace(/≤/g, ' \\le ')
-      .replace(/≥/g, ' \\ge ')
-      .replace(/≠/g, ' \\neq ')
-      .replace(/±/g, ' \\pm ')
-      .replace(/°/g, '^\\circ ')
-      .replace(/≈/g, ' \\approx ')
-      .replace(/π/g, ' \\pi ')
-      .replace(/…/g, ' \\dots ');
-  }
-
-  function convertOmmlToLatex(ommlXml: string): string {
-    let s = ommlXml.replace(/<m:rPr[\s\S]*?<\/m:rPr>/g, '');
-
-    let prev = '';
-    let iterations = 0;
-    while (prev !== s && iterations < 10) {
-      prev = s;
-      iterations++;
-
-      // Fractions: <m:f>...<m:num>...</m:num>...<m:den>...</m:den>...</m:f>
-      s = s.replace(/<m:f(?:\s[^>]*)?>[\s\S]*?<m:num(?:\s[^>]*)?>([\s\S]*?)<\/m:num>[\s\S]*?<m:den(?:\s[^>]*)?>([\s\S]*?)<\/m:den>[\s\S]*?<\/m:f>/g, (_m, num, den) => {
-        return `\\frac{${cleanOmmlFragment(num).trim()}}{${cleanOmmlFragment(den).trim()}}`;
-      });
-
-      // Radicals (square / nth root): <m:rad>...<m:deg>...</m:deg>...<m:e>...</m:e>...</m:rad>
-      s = s.replace(/<m:rad(?:\s[^>]*)?>[\s\S]*?(?:<m:deg(?:\s[^>]*)?>([\s\S]*?)<\/m:deg>)?[\s\S]*?<m:e(?:\s[^>]*)?>([\s\S]*?)<\/m:e>[\s\S]*?<\/m:rad>/g, (_m, deg, base) => {
-        const cleanDeg = deg ? cleanOmmlFragment(deg).trim() : '';
-        const cleanBase = cleanOmmlFragment(base).trim();
-        return cleanDeg ? `\\sqrt[${cleanDeg}]{${cleanBase}}` : `\\sqrt{${cleanBase}}`;
-      });
-
-      // Superscript: <m:sSup>...<m:e>...</m:e>...<m:sup>...</m:sup>...</m:sSup>
-      s = s.replace(/<m:sSup(?:\s[^>]*)?>[\s\S]*?<m:e(?:\s[^>]*)?>([\s\S]*?)<\/m:e>[\s\S]*?<m:sup(?:\s[^>]*)?>([\s\S]*?)<\/m:sup>[\s\S]*?<\/m:sSup>/g, (_m, base, sup) => {
-        return `{${cleanOmmlFragment(base).trim()}}^{${cleanOmmlFragment(sup).trim()}}`;
-      });
-
-      // Subscript: <m:sSub>...<m:e>...</m:e>...<m:sub>...</m:sub>...</m:sSub>
-      s = s.replace(/<m:sSub(?:\s[^>]*)?>[\s\S]*?<m:e(?:\s[^>]*)?>([\s\S]*?)<\/m:e>[\s\S]*?<m:sub(?:\s[^>]*)?>([\s\S]*?)<\/m:sub>[\s\S]*?<\/m:sSub>/g, (_m, base, sub) => {
-        return `{${cleanOmmlFragment(base).trim()}}_{${cleanOmmlFragment(sub).trim()}}`;
-      });
-
-      // Sub-Superscript: <m:sSubSup>...<m:e>...<m:sub>...<m:sup>...
-      s = s.replace(/<m:sSubSup(?:\s[^>]*)?>[\s\S]*?<m:e(?:\s[^>]*)?>([\s\S]*?)<\/m:e>[\s\S]*?<m:sub(?:\s[^>]*)?>([\s\S]*?)<\/m:sub>[\s\S]*?<m:sup(?:\s[^>]*)?>([\s\S]*?)<\/m:sup>[\s\S]*?<\/m:sSubSup>/g, (_m, base, sub, sup) => {
-        return `{${cleanOmmlFragment(base).trim()}}_{${cleanOmmlFragment(sub).trim()}}^{${cleanOmmlFragment(sup).trim()}}`;
-      });
-
-      // Delimiters (brackets)
-      s = s.replace(/<m:d(?:\s[^>]*)?>[\s\S]*?<m:e(?:\s[^>]*)?>([\s\S]*?)<\/m:e>[\s\S]*?<\/m:d>/g, (_m, content) => {
-        return `(${cleanOmmlFragment(content).trim()})`;
-      });
-    }
-
-    return cleanOmmlFragment(s).trim();
-  }
-
-  const paragraphs: string[] = [];
-  const pRegex = /<w:p(?:\s[^>]*)?>([\s\S]*?)<\/w:p>/g;
-  let pMatch;
-
-  while ((pMatch = pRegex.exec(xml)) !== null) {
-    const pContent = pMatch[1];
-    let pText = '';
-
-    const tokenRegex = /(<m:oMath(?:\s[^>]*)?>[\s\S]*?<\/m:oMath>)|(<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>)|(<w:tab\/>)|(<w:br\/>)/g;
-    let tMatch;
-    let lastMathClean = '';
-    let lastMathLatex = '';
-
-    while ((tMatch = tokenRegex.exec(pContent)) !== null) {
-      if (tMatch[1]) {
-        const math = convertOmmlToLatex(tMatch[1]);
-        if (math) {
-          lastMathLatex = math.trim();
-          lastMathClean = cleanOmmlFragment(tMatch[1]).trim();
-          pText += ` $${math}$ `;
-        }
-      } else if (tMatch[2]) {
-        const rawT = tMatch[3] || '';
-        let decoded = rawT
-          .replace(/&amp;/g, '&')
-          .replace(/&lt;/g, '<')
-          .replace(/&gt;/g, '>')
-          .replace(/&quot;/g, '"')
-          .replace(/&apos;/g, "'");
-
-        // Suppress shadow text runs right after math
-        if (lastMathClean || lastMathLatex) {
-          const trimmedDecoded = decoded.trim();
-          // Case A: Full match shadow (e.g. math was "1", text is "1", or math "x", text "x")
-          if (trimmedDecoded && (trimmedDecoded === lastMathClean || trimmedDecoded === lastMathLatex)) {
-            lastMathClean = '';
-            lastMathLatex = '';
-            continue; // Suppress duplicate shadow text!
-          }
-
-          // Case B: Prefix shadow (e.g. math was "x", text is "x kelipatan 5" or "x berturut-turut")
-          if (lastMathClean && lastMathClean.length > 0 && lastMathClean.length <= 15) {
-            const escapedClean = lastMathClean.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const shadowPrefixRegex = new RegExp(`^\\s*${escapedClean}(?=[\\s.,;:?!]|$)`, 'i');
-            if (shadowPrefixRegex.test(decoded)) {
-              decoded = decoded.replace(shadowPrefixRegex, '').trimStart();
-            }
-          }
-
-          // Case C: Fraction shadow (e.g. math was \frac{2013}{7000}, text is "70002013" or starts with "70002013" / "20137000")
-          if (lastMathLatex && lastMathLatex.includes('\\frac')) {
-            const fracMatch = lastMathLatex.match(/\\frac\{([^}]+)\}\{([^}]+)\}/);
-            if (fracMatch) {
-              const numPart = fracMatch[1].replace(/\s+/g, '');
-              const denPart = fracMatch[2].replace(/\s+/g, '');
-              const combos = [numPart + denPart, denPart + numPart, numPart, denPart];
-              for (const combo of combos) {
-                if (combo.length >= 2) {
-                  const esc = combo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                  const fracShadowReg = new RegExp(`^\\s*${esc}(?=[\\s.,;:?!]|$)`, 'i');
-                  if (fracShadowReg.test(decoded)) {
-                    decoded = decoded.replace(fracShadowReg, '').trimStart();
-                    break;
-                  }
-                }
-              }
-            }
-          }
-
-          lastMathClean = '';
-          lastMathLatex = '';
-        }
-
-        pText += decoded;
-      } else if (tMatch[4]) {
-        pText += ' ';
-      } else if (tMatch[5]) {
-        pText += '\n';
-      }
-    }
-
-    const trimmed = scrubEquationShadowDuplicates(pText);
-
-    if (trimmed) {
-      paragraphs.push(trimmed);
-    }
-  }
-
-  return scrubEquationShadowDuplicates(paragraphs.join('\n'));
-}
-
-async function extractDocxTextWithMath(buffer: Buffer): Promise<string> {
-  try {
-    const zip = await JSZip.loadAsync(buffer);
-    const docXmlFile = zip.file('word/document.xml');
-    if (docXmlFile) {
-      const xml = await docXmlFile.async('string');
-      const text = extractTextAndMathFromWordXml(xml);
-      if (text && text.trim().length > 30) {
-        console.log('[Word Importer] Extracted text with OMML math successfully. Total length:', text.length);
-        return text;
-      }
-    }
-  } catch (err) {
-    console.warn('[Word Importer] JSZip OMML extraction error, falling back to mammoth:', err);
-  }
-
-  const mammothResult = await mammoth.extractRawText({ buffer });
-  return mammothResult.value;
-}
-
-// High-speed, 100% deterministic Indonesian Olympiad question parser
-// Parses all questions, options A-E, answers, and explanations verbatim without external API quota
-function parseIndonesianOlympiadText(
-  extractedText: string,
-  categoryOverride: string = 'SMP',
-  relaxedMode: boolean = false
-): any[] {
-  const questions: any[] = [];
-  const rawLines = extractedText
-    .split('\n')
-    .map((l) => l.replace(/[\u00a0\u200b\u200e\u200f]/g, ' ').trim())
-    .filter(Boolean);
-
-  const qNumRegex = /^(?:No\.?\s*|Nomor\s*|Soal\s*)?(?:\$|\\textbf\{|\*\*)*\s*(\d{1,2})\s*(?:\$|\}|\*\*)*\s*[\.\)\]\-:]\s*(.*)$/i;
-  const isExplanationStepWord = (str: string) =>
-    /^(?:Langkah|Tahap|Cara|Kasus|Metode|Sifat|Pola|Sub|Bagian)\s*\d+/i.test(str);
-
-  const questionBlocks: { number: number; lines: string[] }[] = [];
-  let currentBlock: { number: number; lines: string[] } | null = null;
-
-  for (const line of rawLines) {
-    const match = line.match(qNumRegex);
-
-    if (match) {
-      const num = parseInt(match[1], 10);
-      const afterNum = match[2].trim();
-
-      const isInsideExplanation =
-        currentBlock && currentBlock.lines.some((l) => /Pembahasan\s*:/i.test(l));
-      const looksLikeExplanationStep =
-        isExplanationStepWord(afterNum) || afterNum.startsWith('>') || afterNum.startsWith('•');
-
-      const isNextQuestion = !currentBlock
-        ? num === 1 || num <= 5
-        : num === currentBlock.number + 1 || (num > currentBlock.number && (!isInsideExplanation || afterNum.length > 10));
-
-      if (isNextQuestion && !looksLikeExplanationStep) {
-        currentBlock = { number: num, lines: [line] };
-        questionBlocks.push(currentBlock);
-        continue;
-      }
-    }
-
-    if (currentBlock) {
-      currentBlock.lines.push(line);
-    }
-  }
-
-  // FALLBACK PASS: If no numbered blocks were found (e.g. Word lists without literal numbers or raw text paste)
-  if (questionBlocks.length === 0) {
-    let autoNum = 1;
-    let tempLines: string[] = [];
-    for (let i = 0; i < rawLines.length; i++) {
-      const line = rawLines[i];
-      const isOptionA = /^\(?A\)?[.\-:\)]\s*/i.test(line);
-      if (isOptionA && tempLines.length > 0) {
-        const qBlockLines = [...tempLines, line];
-        let j = i + 1;
-        while (j < rawLines.length && !(/^\(?A\)?[.\-:\)]\s*/i.test(rawLines[j]) && rawLines[j - 1]?.match(/Pembahasan|Kunci/i))) {
-          qBlockLines.push(rawLines[j]);
-          j++;
-        }
-        questionBlocks.push({ number: autoNum++, lines: qBlockLines });
-        tempLines = [];
-        i = j - 1;
-        continue;
-      }
-      tempLines.push(line);
-    }
-  }
-
-  const nowTs = Date.now();
-
-  for (const block of questionBlocks) {
-    const qNum = block.number;
-    const blockText = block.lines.join('\n');
-
-    let state: 'QUESTION' | 'OPTIONS' | 'KEY' | 'EXPLANATION' = 'QUESTION';
-    const optionMap = new Map<string, string>();
-    let detectedKey = 'A';
-    const explanationLines: string[] = [];
-    const collectedQTextLines: string[] = [];
-
-    const firstLineMatch = block.lines[0].match(qNumRegex);
-    if (firstLineMatch && firstLineMatch[2]) {
-      collectedQTextLines.push(firstLineMatch[2]);
-    }
-
-    const keyRegex = /(?:Kunci(?:\s*Jawaban)?|Jawaban(?:\s*Benar)?)\s*[:\-=]\s*\(?([A-E])\)?/i;
-    const expRegex = /Pembahasan\s*[:\-=]?\s*(.*)$/i;
-
-    for (let i = 1; i < block.lines.length; i++) {
-      const line = block.lines[i];
-
-      const keyMatch = line.match(keyRegex);
-      if (keyMatch) {
-        state = 'KEY';
-        detectedKey = keyMatch[1].toUpperCase();
-        continue;
-      }
-
-      const expMatch = line.match(expRegex);
-      if (expMatch) {
-        state = 'EXPLANATION';
-        if (expMatch[1] && expMatch[1].trim()) {
-          explanationLines.push(expMatch[1].trim());
-        }
-        continue;
-      }
-
-      // Check inline multiple options: "A. 1   B. 2   C. 4   D. 5   E. 8"
-      const inlineOpts = [
-        ...line.matchAll(
-          /(?:^|\s+)(?:\(?([A-E])\)?[.\-:\)]\s*)([^\n]+?)(?=(?:\s+\(?([A-E])\)?[.\-:\)]\s*)|$)/gi
-        ),
-      ];
-      if (inlineOpts.length >= 2 && state !== 'EXPLANATION') {
-        state = 'OPTIONS';
-        for (const m of inlineOpts) {
-          const letter = m[1].toUpperCase();
-          const optVal = scrubEquationShadowDuplicates(m[2].trim());
-          optionMap.set(letter, optVal);
-        }
-        continue;
-      }
-
-      // Check single option per line: "A. 1" or "A) x kelipatan 5"
-      const singleOptMatch = line.match(/^\(?([A-E])\)?[.\-:\)]\s*(.*)$/i);
-      if (singleOptMatch && state !== 'EXPLANATION') {
-        state = 'OPTIONS';
-        const letter = singleOptMatch[1].toUpperCase();
-        optionMap.set(letter, scrubEquationShadowDuplicates(singleOptMatch[2].trim()));
-        continue;
-      }
-
-      if (state === 'QUESTION') {
-        collectedQTextLines.push(line);
-      } else if (state === 'OPTIONS') {
-        const lastLetter = ['E', 'D', 'C', 'B', 'A'].find((l) => optionMap.has(l));
-        if (lastLetter) {
-          const updatedOpt = scrubEquationShadowDuplicates(optionMap.get(lastLetter) + ' ' + line);
-          optionMap.set(lastLetter, updatedOpt);
-        }
-      } else if (state === 'EXPLANATION' || state === 'KEY') {
-        explanationLines.push(line);
-      }
-    }
-
-    const questionText = scrubEquationShadowDuplicates(
-      collectedQTextLines.join(' ').replace(/\s+/g, ' ').trim()
-    );
-
-    const letters = ['A', 'B', 'C', 'D', 'E'];
-    const finalOptions = letters.map((l) => ({
-      id: l,
-      text: scrubEquationShadowDuplicates(optionMap.get(l) || `Pilihan ${l}`),
-    }));
-
-    let domain = 'Aljabar';
-    const textLower = (questionText + ' ' + blockText).toLowerCase();
-    if (
-      textLower.includes('fpb') ||
-      textLower.includes('kpk') ||
-      textLower.includes('bilangan') ||
-      textLower.includes('habis dibagi') ||
-      textLower.includes('prima') ||
-      textLower.includes('desimal') ||
-      textLower.includes('koma') ||
-      textLower.includes('pecahan') ||
-      textLower.includes('digit') ||
-      textLower.includes('faktor')
-    ) {
-      domain = 'Teori Bilangan';
-    } else if (
-      textLower.includes('segitiga') ||
-      textLower.includes('lingkaran') ||
-      textLower.includes('sudut') ||
-      textLower.includes('luas') ||
-      textLower.includes('keliling') ||
-      textLower.includes('persegi') ||
-      textLower.includes('garis') ||
-      textLower.includes('koordinat') ||
-      textLower.includes('kubus') ||
-      textLower.includes('trapesium') ||
-      textLower.includes('jajar')
-    ) {
-      domain = 'Geometri';
-    } else if (
-      textLower.includes('peluang') ||
-      textLower.includes('susunan') ||
-      textLower.includes('kombinasi') ||
-      textLower.includes('permutasi') ||
-      textLower.includes('cara') ||
-      textLower.includes('dadu') ||
-      textLower.includes('kartu') ||
-      textLower.includes('koin') ||
-      textLower.includes('kemungkinan')
-    ) {
-      domain = 'Kombinatorika';
-    }
-
-    const cleanedExplanation = scrubEquationShadowDuplicates(
-      explanationLines.length > 0
-        ? explanationLines.join('\n')
-        : 'Pembahasan sesuai naskah dokumen.'
-    );
-
-    questions.push({
-      id: `MMO-WORD-${nowTs}-${qNum}`,
-      category: categoryOverride === 'SMA' ? 'SMA' : 'SMP',
-      domain,
-      type: 'multiple_choice',
-      questionNumber: qNum,
-      stage: 'Penyisihan',
-      text: questionText,
-      formulaLatex: '', // Keep clean so no duplicate box
-      options: finalOptions,
-      correctAnswer: detectedKey,
-      explanation: cleanedExplanation,
-      points: { correct: 4, wrong: -1, blank: 0 },
-    });
-  }
-
-  return questions;
-}
-
-// Multer memory storage for MS Word (.docx) uploads
-const uploadWord = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024 }, // 15 MB
-});
-
-// Import questions from MS Word (.docx) with deterministic instant parser + Gemini AI fallback
-app.post('/api/admin/upload-word', uploadWord.single('file'), async (req, res) => {
-  try {
-    if (!req.file) {
+    if (!req.file || !req.file.buffer) {
       return res.status(400).json({
         success: false,
-        error: 'Berkas Word (.docx) tidak ditemukan. Pastikan Anda telah memilih berkas.',
+        error: 'Berkas Word (.docx) tidak ditemukan pada unggahan.',
       });
     }
 
-    // Verify file extension or mime type
-    const originalName = req.file.originalname || '';
-    if (!originalName.toLowerCase().endsWith('.docx')) {
+    const fileName = req.file.originalname || '';
+    if (!fileName.toLowerCase().endsWith('.docx')) {
       return res.status(400).json({
         success: false,
-        error: 'Format berkas harus Microsoft Word (.docx). Mohon simpan berkas Anda dalam format .docx.',
+        error: 'Format berkas harus berupa Microsoft Word (.docx).',
       });
     }
 
-    const categoryOverride = (req.body.category as string) || 'SMA';
+    const category = req.body?.category === 'SMP' ? 'SMP' : 'SMA';
+    const stage = req.body?.stage === 'Semifinal' ? 'Semifinal' : 'Penyisihan';
 
-    // 1. Extract text and OMML math formulas directly from .docx OpenXML
-    const extractedText = await extractDocxTextWithMath(req.file.buffer);
-
-    if (!extractedText || extractedText.trim().length < 15) {
-      return res.status(400).json({
-        success: false,
-        error: 'Teks dari dokumen Word kosong atau tidak dapat diekstraksi. Pastikan dokumen memuat teks soal.',
-      });
-    }
-
-    // 2. PRIMARY: High-speed, deterministic Indonesian Olympiad parser
-    // Processes all 10+ questions verbatim without 429 quota exhaustion or variable doubling
-    const deterministicQuestions = parseIndonesianOlympiadText(extractedText, categoryOverride);
-
-    if (deterministicQuestions && deterministicQuestions.length >= 1) {
-      console.log(
-        `[Word Importer] Parser deterministik berhasil mengekstrak ${deterministicQuestions.length} butir soal lengkap!`
-      );
-      return res.json({
-        success: true,
-        count: deterministicQuestions.length,
-        questions: deterministicQuestions,
-        extractedSample: extractedText.substring(0, 200),
-      });
-    }
-
-    // 3. FALLBACK: If document is unstructured or has no standard numbering, call Gemini AI if available
-    const foundNumbers: number[] = [];
-    const qNumPattern = /(?:^|\n)\s*(\d{1,2})\s*[\.\)]\s*(?=[A-Za-zА-Яа-я\$\\\{\[\(]|Diketahui|Jika|Berapa|Tentukan|Suatu|Pada|Sebuah|Dalam)/g;
-    let m;
-    while ((m = qNumPattern.exec(extractedText)) !== null) {
-      const n = parseInt(m[1], 10);
-      if (n >= 1 && n <= 60 && !foundNumbers.includes(n)) {
-        foundNumbers.push(n);
-      }
-    }
-    const totalDetected = foundNumbers.length > 0 ? Math.max(...foundNumbers) : 0;
-
-    const prompt = `Anda adalah parser soal olimpiade matematika profesional untuk platform MMO 2027 (Matriks Mathematics Olympiad UMM).
-Tugas Anda adalah membaca teks naskah soal dari dokumen Microsoft Word berikut, membedah setiap nomor soal, opsi jawaban (A, B, C, D, E), kunci jawaban yang benar, pembahasan, domain matematika, dan memastikan format KaTeX LaTeX ($...$) rapi.
-
-Target Jenjang: "${categoryOverride}" (SMP atau SMA).
-${totalDetected > 0 ? `JUMLAH BUTIR SOAL DALAM NASKAH: Terdeteksi ada ${totalDetected} butir soal (Nomor 1 s.d. Nomor ${totalDetected}).` : ''}
-
-PANDUAN KETAT EKSTRAKSI:
-1. EKSTRAKSI LENGKAP SELURUH BUTIR SOAL (DILARANG BERHENTI DI TENGAH JALAN):
-   - Seluruh soal dari nomor 1 sampai nomor terakhir harus ada di dalam output JSON.
-2. KEASLIAN ANGKA & PILIHAN (VERBATIM):
-   - AMBIL TEKS, ANGKA SOAL, DAN PILIHAN JAWABAN PERSIS SEPERTI YANG TERTULIS DI NASKAH DOKUMEN.
-   - JANGAN PERNAH MENGGANDAKAN ANGKA ATAU HURUF ($x$ tetap $x$, bukan $xx$).
-3. FORMULA LATEX:
-   - Rumus matematika sudah tertulis di dalam field "text". KOSONGKAN field "formulaLatex" (beri nilai "").
-4. ATURAN ESCAPE BACKSLASH DALAM JSON:
-   - Gunakan double backslash "\\\\" untuk setiap perintah LaTeX dalam JSON.
-
-Format output HARUS berupa JSON Array murni:
-[
-  {
-    "id": "MMO-WORD-[timestamp]-[nomor]",
-    "category": "${categoryOverride}",
-    "domain": "Aljabar",
-    "type": "multiple_choice",
-    "questionNumber": 1,
-    "stage": "Penyisihan",
-    "text": "Teks lengkap soal...",
-    "formulaLatex": "",
-    "options": [
-      { "id": "A", "text": "1" },
-      { "id": "B", "text": "2" },
-      { "id": "C", "text": "4" },
-      { "id": "D", "text": "5" },
-      { "id": "E", "text": "8" }
-    ],
-    "correctAnswer": "A",
-    "explanation": "Langkah penyelesaian lengkap...",
-    "points": { "correct": 4, "wrong": -1, "blank": 0 }
-  }
-]
-
-Berikut adalah teks dokumen Word yang diekstrak:
----
-${extractedText.substring(0, 50000)}
----`;
-
-    let generatedText = '';
-    if (process.env.GEMINI_API_KEY) {
-      const candidateModels = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
-      let lastError: any = null;
-
-      for (const modelName of candidateModels) {
-        for (let attempt = 1; attempt <= 2; attempt++) {
-          try {
-            console.log(`[Gemini Word Parser] Memproses dengan ${modelName} (percobaan ${attempt})...`);
-            const response = await ai.models.generateContent({
-              model: modelName,
-              contents: prompt,
-              config: {
-                responseMimeType: 'application/json',
-                ...(modelName === 'gemini-3.8-flash'
-                  ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
-                  : {}),
-              },
-            });
-            if (response && response.text) {
-              generatedText = response.text;
-              break;
-            }
-          } catch (err: any) {
-            lastError = err;
-            const msg = String(err?.message || err);
-            console.warn(`[Gemini Word Parser] Model ${modelName} percobaan ${attempt} error:`, msg);
-
-            const isTransient =
-              msg.includes('503') ||
-              msg.includes('UNAVAILABLE') ||
-              msg.includes('high demand') ||
-              msg.includes('429') ||
-              msg.includes('RESOURCE_EXHAUSTED');
-
-            if (isTransient && attempt < 2) {
-              await new Promise((resolve) => setTimeout(resolve, 1500));
-              continue;
-            }
-            break;
-          }
-        }
-        if (generatedText) break;
-      }
-
-      if (!generatedText) {
-        console.warn('[Gemini Word Parser] AI quota/network issue. Menggunakan parser deterministik cerdas...');
-        const fallbackQuestions = parseIndonesianOlympiadText(extractedText, categoryOverride, true);
-        if (fallbackQuestions.length > 0) {
-          return res.json({
-            success: true,
-            count: fallbackQuestions.length,
-            questions: fallbackQuestions,
-            extractedSample: extractedText.substring(0, 200),
-            fallbackUsed: true,
-          });
-        }
-        if (lastError) {
-          const errMsg = String(lastError?.message || lastError);
-          if (errMsg.includes('429') || errMsg.includes('RESOURCE_EXHAUSTED')) {
-            return res.status(429).json({
-              success: false,
-              error: 'Kuota AI harian/menit dari Google tercapai (429). Gunakan tab "Tempel Teks Cerdas" di samping untuk langsung menyalin naskah soal dari Word seketika tanpa kuota AI!',
-            });
-          }
-          throw lastError;
-        }
-      }
-    } else {
-      const fallbackQuestions = parseIndonesianOlympiadText(extractedText, categoryOverride, true);
-      if (fallbackQuestions.length > 0) {
-        return res.json({
-          success: true,
-          count: fallbackQuestions.length,
-          questions: fallbackQuestions,
-          extractedSample: extractedText.substring(0, 200),
-          fallbackUsed: true,
-        });
-      }
-      return res.status(422).json({
-        success: false,
-        error:
-          'Format nomor soal dalam berkas Word tidak terbaca secara otomatis. Gunakan tab "Tempel Teks Cerdas" untuk menyalin naskah langsung.',
-      });
-    }
-
-    let parsedQuestions = parseQuestionsJsonSafely(generatedText);
-
-    if (!Array.isArray(parsedQuestions) || parsedQuestions.length === 0) {
-      console.warn('[Gemini Word Parser] AI menghasilkan 0 butir soal, beralih ke parser deterministik...');
-      const fallbackQuestions = parseIndonesianOlympiadText(extractedText, categoryOverride, true);
-      if (fallbackQuestions.length > 0) {
-        return res.json({
-          success: true,
-          count: fallbackQuestions.length,
-          questions: fallbackQuestions,
-          extractedSample: extractedText.substring(0, 200),
-          fallbackUsed: true,
-        });
-      }
-      return res.status(422).json({
-        success: false,
-        error: 'Tidak ditemukan butir soal matematika yang dapat dikenali dalam dokumen Word. Anda bisa menyalin teks soal ke tab "Tempel Teks Cerdas".',
-      });
-    }
-
-    const nowTsFallback = Date.now();
-    const validDomains = ['Aljabar', 'Geometri', 'Kombinatorika', 'Teori Bilangan'];
-
-    const formattedQuestions = parsedQuestions.map((q: any, i: number) => {
-      const qNum = Number(q.questionNumber) || i + 1;
-      const rawText = scrubEquationShadowDuplicates(String(q.text || `Soal Nomor ${qNum}`));
-      const rawFormula = q.formulaLatex
-        ? scrubEquationShadowDuplicates(String(q.formulaLatex).replace(/^\$+|\$+$/g, '').trim())
-        : '';
-      const isAlreadyInText =
-        rawFormula.length > 0 &&
-        rawText.replace(/\s+/g, '').includes(rawFormula.replace(/\s+/g, ''));
-      const finalFormula = isAlreadyInText ? '' : rawFormula;
-
-      return {
-        id: q.id || `MMO-WORD-${nowTsFallback}-${i + 1}`,
-        category: q.category === 'SMP' || q.category === 'SMA' ? q.category : categoryOverride,
-        domain: validDomains.includes(q.domain) ? q.domain : 'Aljabar',
-        type: q.type === 'short_answer' ? 'short_answer' : 'multiple_choice',
-        questionNumber: qNum,
-        stage: q.stage || 'Penyisihan',
-        text: rawText,
-        formulaLatex: finalFormula,
-        options:
-          Array.isArray(q.options) && q.options.length >= 2
-            ? q.options.map((opt: any, optIdx: number) => ({
-                id: opt.id || ['A', 'B', 'C', 'D', 'E'][optIdx] || 'A',
-                text: scrubEquationShadowDuplicates(String(opt.text || '').trim()),
-              }))
-            : [
-                { id: 'A', text: 'Pilihan A' },
-                { id: 'B', text: 'Pilihan B' },
-                { id: 'C', text: 'Pilihan C' },
-                { id: 'D', text: 'Pilihan D' },
-                { id: 'E', text: 'Pilihan E' },
-              ],
-        correctAnswer: String(q.correctAnswer || 'A').toUpperCase().trim(),
-        explanation: scrubEquationShadowDuplicates(String(q.explanation || 'Pembahasan belum tersedia.')),
-        points:
-          q.points && typeof q.points === 'object'
-            ? {
-                correct: Number(q.points.correct) || 4,
-                wrong: Number(q.points.wrong) !== undefined ? Number(q.points.wrong) : -1,
-                blank: Number(q.points.blank) || 0,
-              }
-            : { correct: 4, wrong: -1, blank: 0 },
-      };
+    const result = await parseDocxBufferToDrafts(req.file.buffer, {
+      category,
+      stage,
     });
 
     res.json({
       success: true,
-      count: formattedQuestions.length,
-      questions: formattedQuestions,
-      extractedSample: extractedText.substring(0, 200),
+      data: result,
     });
-  } catch (error: any) {
-    console.error('Word upload and parsing error:', error);
-    let userMsg = error?.message || 'Terjadi kesalahan sistem saat mengekstrak dan membedah dokumen Word.';
-
-    try {
-      if (userMsg.trim().startsWith('{') && userMsg.includes('"message"')) {
-        const parsed = JSON.parse(userMsg);
-        if (parsed?.error?.message) {
-          userMsg = parsed.error.message;
-        }
-      }
-    } catch {
-      // ignore
-    }
-
-    if (
-      userMsg.includes('503') ||
-      userMsg.includes('high demand') ||
-      userMsg.includes('UNAVAILABLE')
-    ) {
-      userMsg =
-        'Server AI Google Gemini sedang mengalami lonjakan antrean tinggi sesaat (503 High Demand). Sistem telah mencoba beralih ke model cadangan. Silakan coba klik "Coba Proses Ulang" dalam beberapa detik.';
-    } else if (userMsg.includes('429') || userMsg.includes('RESOURCE_EXHAUSTED')) {
-      userMsg =
-        'Batas frekuensi permintaan AI tercapai sementara (429 Quota Exceeded). Mohon tunggu sebentar sebelum mencoba kembali.';
-    } else if (userMsg.includes('Bad escaped character') || userMsg.includes('JSON')) {
-      userMsg =
-        'Terdapat notasi rumus matematika pada naskah yang sempat mengalami kendala karakter escape KaTeX. Silakan tekan tombol "Coba Proses Ulang" di bawah.';
-    }
-
+  } catch (err: any) {
     res.status(500).json({
       success: false,
-      error: userMsg,
+      error: err?.message || 'Gagal mengurai berkas .docx. Pastikan berkas tidak terenkripsi password dan berformat .docx standar.',
     });
   }
 });
 
-// Smart Paste Text Question Parser (Zero Quota, Deterministic & Fast)
-app.post('/api/admin/parse-text-questions', (req, res) => {
+const MMO_WORD_PARSER_SYSTEM_INSTRUCTION = `Kamu adalah sistem pengurai (parser) ahli untuk Bank Soal Olimpiade Matematika (MMO 2027). Tugas utamamu adalah memproses data mentah hasil salin-tempel (copy-paste) atau ekstraksi dokumen Microsoft Word dan mengubahnya menjadi format JSON terstruktur yang bersih.
+
+ATURAN KRITIS (PENANGANAN BUG TEKS GANDA/BAYANGAN WORD):
+Karakteristik data dari Microsoft Word sering menyertakan "teks fallback" atau teks bayangan di sebelah rumus (misalnya, angka "32" tercetak persis di samping rumus pecahan "3/2", "70002013" di sebelah "2013/7000", atau angka/persamaan ganda seperti "ke-1010", "2929").
+1. Analisis konteks kalimat secara logis. Jika kamu mendeteksi ada angka/huruf aneh yang tergabung berantakan (seperti "32") berdampingan dengan rumus matematika yang masuk akal (seperti 3/2), HAPUS teks bayangan tersebut ("32").
+2. Konversikan semua persamaan dan simbol matematika ke dalam sintaks KaTeX standar (misal: \\frac{3}{2}, \\sqrt{x}, x^{2}, \\sum).
+3. Selalu apit setiap rumus KaTeX dengan simbol dolar ganda ($$ ... $$) agar peramban web dapat merendernya.
+
+ATURAN STRUKTUR BERURUTAN (STATE MACHINE):
+Urai naskah yang diberikan dengan urutan hierarki yang ketat:
+1. Soal: Ambil nomor urut (bilangan bulat) dan teks soal penuh.
+2. Pilihan Ganda: Ekstrak opsi A, B, C, D, E (bisa dalam format vertikal maupun horizontal di naskah asli; jika opsi E tidak ada di naskah, isi E dengan "").
+3. Kunci Jawaban: Ekstrak huruf kunci tunggal ("A", "B", "C", "D", atau "E") yang biasanya ditandai dengan "Kunci:", "KJ:", "Jawaban:", atau "Kunci Jawaban:". Jika tidak tertulis, isi dengan "".
+
+FORMAT OUTPUT:
+Kembalikan HANYA array JSON murni sesuai skema yang ditetapkan tanpa markdown dan tanpa penjelasan apapun.`;
+
+// AI-powered Word / Raw Copy-Paste Parser with Word shadow text removal & $$...$$ KaTeX output
+app.post('/api/admin/parse-word-ai', async (req, res) => {
+  const { rawText, category, stage } = req.body || {};
+
+  if (!rawText || typeof rawText !== 'string' || !rawText.trim()) {
+    return res.status(400).json({
+      success: false,
+      error: 'Teks soal dari Microsoft Word tidak boleh kosong.',
+    });
+  }
+
+  if (!process.env.GEMINI_API_KEY) {
+    return res.status(503).json({
+      success: false,
+      error: 'Kunci API Gemini belum tersedia di server. Periksa panel Settings > Secrets atau gunakan pengurai lokal Word.',
+    });
+  }
+
+  const targetCategory = category === 'SMP' ? 'SMP' : 'SMA';
+  const targetStage = stage === 'Semifinal' ? 'Semifinal' : 'Penyisihan';
+
   try {
-    const { text, category } = req.body;
-    if (!text || typeof text !== 'string' || !text.trim()) {
-      return res.status(400).json({ success: false, error: 'Teks naskah soal tidak boleh kosong.' });
+    let response: any;
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        response = await ai.models.generateContent({
+          model: 'gemini-4-hydrogen',
+          contents: rawText,
+          config: {
+            systemInstruction: MMO_WORD_PARSER_SYSTEM_INSTRUCTION,
+            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  nomor: {
+                    type: Type.INTEGER,
+                    description: 'Nomor urut soal matematika.',
+                  },
+                  soal: {
+                    type: Type.STRING,
+                    description: 'Teks soal penuh bebas teks bayangan Word dengan rumus KaTeX diapit $$ ... $$.',
+                  },
+                  opsi: {
+                    type: Type.OBJECT,
+                    properties: {
+                      A: { type: Type.STRING },
+                      B: { type: Type.STRING },
+                      C: { type: Type.STRING },
+                      D: { type: Type.STRING },
+                      E: { type: Type.STRING },
+                    },
+                    required: ['A', 'B', 'C', 'D', 'E'],
+                  },
+                  kunci_jawaban: {
+                    type: Type.STRING,
+                    description: 'Huruf kunci jawaban A, B, C, D, atau E (atau string kosong jika tidak tertulis).',
+                  },
+                },
+                required: ['nomor', 'soal', 'opsi', 'kunci_jawaban'],
+              },
+            },
+          },
+        });
+        break;
+      } catch (retryErr: any) {
+        const errStatus = Number(retryErr?.status);
+        const isTransient = errStatus === 503 || errStatus === 429 || errStatus === 500;
+        if (!isTransient || attempt === maxAttempts) {
+          throw retryErr;
+        }
+        await new Promise((r) => setTimeout(r, 600 * attempt));
+      }
     }
-    const cat = category === 'SMA' ? 'SMA' : 'SMP';
-    const parsed = parseIndonesianOlympiadText(text, cat, true);
-    if (!parsed || parsed.length === 0) {
+
+    const jsonText = (response?.text ?? '[]').trim();
+    const parsedRaw = JSON.parse(jsonText);
+
+    if (!Array.isArray(parsedRaw) || parsedRaw.length === 0) {
       return res.status(422).json({
         success: false,
-        error:
-          'Tidak dapat mendeteksi butir soal dari teks yang ditempel. Pastikan teks memiliki nomor soal (contoh: "1. ", "2. ") dan pilihan jawaban ("A. ", "B. ", dst).',
+        error: 'AI tidak menemukan butir soal yang sesuai struktur Soal → Pilihan A–E → Kunci Jawaban pada teks tersebut.',
+      });
+    }
+
+    const jsonOutput: StructuredBankSoalItem[] = parsedRaw.map((entry: any, idx: number) => ({
+      nomor: Number(entry?.nomor) > 0 ? Number(entry.nomor) : idx + 1,
+      soal: String(entry?.soal ?? '').trim(),
+      opsi: {
+        A: String(entry?.opsi?.A ?? '').trim(),
+        B: String(entry?.opsi?.B ?? '').trim(),
+        C: String(entry?.opsi?.C ?? '').trim(),
+        D: String(entry?.opsi?.D ?? '').trim(),
+        E: String(entry?.opsi?.E ?? '').trim(),
+      },
+      kunci_jawaban: String(entry?.kunci_jawaban ?? '').trim().toUpperCase(),
+    }));
+
+    const parseResult = convertStructuredJsonToDrafts(jsonOutput, {
+      category: targetCategory,
+      stage: targetStage,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        jsonOutput,
+        parseResult,
+      },
+    });
+  } catch (err: any) {
+    console.error('AI Word parser error:', err);
+    const status = Number(err?.status) || 500;
+    let message = err?.message || 'Gagal memproses teks Word menggunakan Gemini AI.';
+    try {
+      const parsedErr = JSON.parse(message);
+      if (parsedErr?.error?.message) {
+        message = parsedErr.error.message;
+      }
+    } catch {
+      // message is plain text
+    }
+    if (status === 400 || status === 403) {
+      message = `Kunci API Gemini bermasalah (${message}). Periksa pengaturan di panel Settings > Secrets.`;
+    } else if (status === 429) {
+      message = `Batas kuota permintaan AI tercapai (${message}). Silakan coba lagi sebentar atau gunakan tombol "Urai Cepat (Lokal)".`;
+    } else if (status === 503) {
+      message = `Layanan Gemini AI sedang padat sementara (${message}). Silakan klik ulang atau gunakan tombol "Urai Cepat (Lokal)".`;
+    }
+    res.status(status >= 400 && status < 600 ? status : 500).json({
+      success: false,
+      error: message,
+    });
+  }
+});
+
+// Multimodal AI Extractor for uploaded PDF or Image (screenshot/photo) question sheets
+app.post('/api/admin/parse-pdf-image-ai', uploadMedia.single('file'), async (req, res) => {
+  if (!req.file || !req.file.buffer) {
+    return res.status(400).json({
+      success: false,
+      error: 'Berkas PDF atau gambar soal tidak ditemukan pada unggahan.',
+    });
+  }
+
+  const allowedMimeTypes = new Set([
+    'application/pdf',
+    'image/png',
+    'image/jpeg',
+    'image/jpg',
+    'image/webp',
+  ]);
+  const mimeType = (req.file.mimetype || '').toLowerCase();
+  const originalLower = (req.file.originalname || '').toLowerCase();
+  const resolvedMime = allowedMimeTypes.has(mimeType)
+    ? mimeType === 'image/jpg'
+      ? 'image/jpeg'
+      : mimeType
+    : originalLower.endsWith('.pdf')
+    ? 'application/pdf'
+    : originalLower.endsWith('.png')
+    ? 'image/png'
+    : originalLower.endsWith('.webp')
+    ? 'image/webp'
+    : originalLower.endsWith('.jpg') || originalLower.endsWith('.jpeg')
+    ? 'image/jpeg'
+    : '';
+
+  if (!resolvedMime) {
+    return res.status(400).json({
+      success: false,
+      error: 'Format berkas tidak didukung. Unggah berkas PDF (.pdf) atau gambar PNG/JPG/WEBP.',
+    });
+  }
+
+  if (!process.env.GEMINI_API_KEY) {
+    return res.status(503).json({
+      success: false,
+      error: 'Kunci API Gemini belum tersedia di server. Periksa panel Settings > Secrets.',
+    });
+  }
+
+  const targetCategory = req.body?.category === 'SMP' ? 'SMP' : 'SMA';
+  const targetStage = req.body?.stage === 'Semifinal' ? 'Semifinal' : 'Penyisihan';
+
+  try {
+    const mediaPart = {
+      inlineData: {
+        mimeType: resolvedMime,
+        data: req.file.buffer.toString('base64'),
+      },
+    };
+    const promptPart = {
+      text: 'Ekstrak seluruh butir soal matematika dari dokumen PDF atau gambar terlampir secara berurutan (nomor, soal, opsi A–E, dan kunci_jawaban jika tersedia). Konversikan seluruh pecahan, akar, pangkat, sigma, integral, dan simbol matematika ke KaTeX standar yang diapit $$ ... $$.',
+    };
+
+    let response: any;
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        response = await ai.models.generateContent({
+          model: 'gemini-4-hydrogen',
+          contents: { parts: [mediaPart, promptPart] },
+          config: {
+            systemInstruction: MMO_WORD_PARSER_SYSTEM_INSTRUCTION,
+            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  nomor: { type: Type.INTEGER },
+                  soal: { type: Type.STRING },
+                  opsi: {
+                    type: Type.OBJECT,
+                    properties: {
+                      A: { type: Type.STRING },
+                      B: { type: Type.STRING },
+                      C: { type: Type.STRING },
+                      D: { type: Type.STRING },
+                      E: { type: Type.STRING },
+                    },
+                    required: ['A', 'B', 'C', 'D', 'E'],
+                  },
+                  kunci_jawaban: { type: Type.STRING },
+                },
+                required: ['nomor', 'soal', 'opsi', 'kunci_jawaban'],
+              },
+            },
+          },
+        });
+        break;
+      } catch (retryErr: any) {
+        const errStatus = Number(retryErr?.status);
+        const isTransient = errStatus === 503 || errStatus === 429 || errStatus === 500;
+        if (!isTransient || attempt === maxAttempts) {
+          throw retryErr;
+        }
+        await new Promise((r) => setTimeout(r, 600 * attempt));
+      }
+    }
+
+    const jsonText = (response?.text ?? '[]').trim();
+    const parsedRaw = JSON.parse(jsonText);
+
+    if (!Array.isArray(parsedRaw) || parsedRaw.length === 0) {
+      return res.status(422).json({
+        success: false,
+        error: 'Tidak ditemukan butir soal yang terbaca pada file PDF/gambar ini. Pastikan gambar jelas dan tidak buram.',
+      });
+    }
+
+    const jsonOutput: StructuredBankSoalItem[] = parsedRaw.map((entry: any, idx: number) => ({
+      nomor: Number(entry?.nomor) > 0 ? Number(entry.nomor) : idx + 1,
+      soal: String(entry?.soal ?? '').trim(),
+      opsi: {
+        A: String(entry?.opsi?.A ?? '').trim(),
+        B: String(entry?.opsi?.B ?? '').trim(),
+        C: String(entry?.opsi?.C ?? '').trim(),
+        D: String(entry?.opsi?.D ?? '').trim(),
+        E: String(entry?.opsi?.E ?? '').trim(),
+      },
+      kunci_jawaban: String(entry?.kunci_jawaban ?? '').trim().toUpperCase(),
+    }));
+
+    const parseResult = convertStructuredJsonToDrafts(jsonOutput, {
+      category: targetCategory,
+      stage: targetStage,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        jsonOutput,
+        parseResult,
+      },
+    });
+  } catch (err: any) {
+    console.error('AI PDF/Image parser error:', err);
+    const status = Number(err?.status) || 500;
+    let message = err?.message || 'Gagal mengekstrak soal dari PDF atau gambar.';
+    try {
+      const parsedErr = JSON.parse(message);
+      if (parsedErr?.error?.message) message = parsedErr.error.message;
+    } catch {
+      // plain text
+    }
+    if (status === 400 || status === 403) {
+      message = `Kunci API Gemini bermasalah (${message}). Periksa pengaturan di panel Settings > Secrets.`;
+    } else if (status === 429) {
+      message = `Batas kuota permintaan AI tercapai (${message}). Silakan coba lagi sebentar.`;
+    } else if (status === 503) {
+      message = `Layanan Gemini AI sedang padat sementara (${message}). Silakan coba kembali sebentar.`;
+    }
+    res.status(status >= 400 && status < 600 ? status : 500).json({
+      success: false,
+      error: message,
+    });
+  }
+});
+
+// Server-side Google Sheets Question Fetcher (avoids CORS & converts Sheet link -> CSV -> staging drafts)
+app.post('/api/admin/fetch-sheets-questions', async (req, res) => {
+  try {
+    const { url, category, stage } = req.body || {};
+    if (!url || typeof url !== 'string' || !url.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Masukkan tautan Google Sheets atau link ekspor CSV yang valid.',
+      });
+    }
+
+    const rawUrl = url.trim();
+    let fetchUrl = rawUrl;
+
+    const sheetMatch = rawUrl.match(/https:\/\/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+    if (sheetMatch) {
+      const sheetId = sheetMatch[1];
+      const gidMatch = rawUrl.match(/[?&#]gid=(\d+)/);
+      const gid = gidMatch ? gidMatch[1] : '0';
+      fetchUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+    } else if (!/^https?:\/\//i.test(rawUrl)) {
+      return res.status(400).json({
+        success: false,
+        error: 'URL harus diawali https:// (mis. tautan Google Sheets).',
+      });
+    }
+
+    const sheetRes = await fetch(fetchUrl);
+    if (!sheetRes.ok) {
+      return res.status(400).json({
+        success: false,
+        error: `Gagal mengunduh Google Sheets (HTTP ${sheetRes.status}). Pastikan akses berbagi disetel "Siapa saja yang memiliki link dapat melihat".`,
+      });
+    }
+
+    const csvText = await sheetRes.text();
+    if (!csvText.trim() || csvText.trim().startsWith('<!DOCTYPE html') || csvText.includes('ServiceLogin')) {
+      return res.status(400).json({
+        success: false,
+        error: 'Spreadsheet bersifat privat atau membutuhkan login Google. Ubah izin berbagi menjadi "Siapa saja yang memiliki link dapat melihat".',
+      });
+    }
+
+    const targetCategory = category === 'SMP' ? 'SMP' : 'SMA';
+    const targetStage = stage === 'Semifinal' ? 'Semifinal' : 'Penyisihan';
+    const buffer = Buffer.from(csvText, 'utf-8');
+    const parseResult = parseSpreadsheetBufferToDrafts(buffer, {
+      category: targetCategory,
+      stage: targetStage,
+    });
+
+    if (parseResult.drafts.length === 0) {
+      return res.status(422).json({
+        success: false,
+        error: 'Tidak ditemukan baris soal yang valid pada Google Sheets. Pastikan baris header memiliki kolom "Soal", "Opsi A"–"Opsi E", dan "Kunci".',
       });
     }
 
     res.json({
       success: true,
-      count: parsed.length,
-      questions: parsed,
+      data: parseResult,
     });
-  } catch (error: any) {
-    console.error('Text question parser error:', error);
-    res.status(500).json({ success: false, error: error?.message || 'Gagal membedah teks soal.' });
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      error: err?.message || 'Gagal membaca data soal dari Google Sheets.',
+    });
   }
 });
+
+// Bulk save questions from Word importer preview
+app.post('/api/questions/bulk', (req, res) => {
+  loadQuestionsState();
+  const {
+    questions: incoming,
+    mode = 'append',
+    category,
+    stage,
+  } = req.body || {};
+
+  if (!Array.isArray(incoming) || incoming.length === 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'Daftar soal yang akan disimpan tidak boleh kosong.',
+    });
+  }
+
+  const sanitizedIncoming = incoming.map((q: any, idx: number) =>
+    sanitizeServerQuestion({
+      ...q,
+      id: q.id || `mmo-${Date.now()}-${idx + 1}-${Math.random().toString(36).slice(2, 6)}`,
+      questionNumber: Number(q.questionNumber) || idx + 1,
+      points: q.points || { correct: 4, wrong: -1, blank: 0 },
+    })
+  );
+
+  if (mode === 'replace_all') {
+    questions = sanitizedIncoming;
+  } else if (mode === 'replace_packet' && category && stage) {
+    questions = [
+      ...questions.filter((q) => !(q.category === category && (q.stage || 'Penyisihan') === stage)),
+      ...sanitizedIncoming,
+    ];
+  } else {
+    questions = [...questions, ...sanitizedIncoming];
+  }
+
+  saveQuestionsState();
+  res.json({ success: true, data: questions });
+});
+
+// Add single question
+app.post('/api/questions', (req, res) => {
+  loadQuestionsState();
+  const payload = req.body;
+  if (!payload || (!payload.text && !payload.imageUrl)) {
+    return res.status(400).json({ success: false, error: 'Teks soal atau gambar wajib diisi.' });
+  }
+  const newQuestion = sanitizeServerQuestion({
+    ...payload,
+    id: payload.id || `mmo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    points: payload.points || { correct: 4, wrong: -1, blank: 0 },
+  });
+  questions = [...questions, newQuestion];
+  saveQuestionsState();
+  res.json({ success: true, data: questions, added: newQuestion });
+});
+
+// Update single question
+app.put('/api/questions/:id', (req, res) => {
+  loadQuestionsState();
+  const { id } = req.params;
+  const idx = questions.findIndex((q) => q.id === id);
+  if (idx === -1) {
+    return res.status(404).json({ success: false, error: 'Soal tidak ditemukan.' });
+  }
+  questions[idx] = sanitizeServerQuestion({
+    ...questions[idx],
+    ...req.body,
+    id,
+  });
+  saveQuestionsState();
+  res.json({ success: true, data: questions, updated: questions[idx] });
+});
+
+// Delete single question
+app.delete('/api/questions/:id', (req, res) => {
+  loadQuestionsState();
+  const { id } = req.params;
+  const before = questions.length;
+  questions = questions.filter((q) => q.id !== id);
+  if (questions.length === before) {
+    return res.status(404).json({ success: false, error: 'Soal tidak ditemukan.' });
+  }
+  saveQuestionsState();
+  res.json({ success: true, data: questions });
+});
+
+// Clear all questions
+app.post('/api/questions/clear-all', (_req, res) => {
+  questions = [];
+  saveQuestionsState();
+  res.json({ success: true, data: questions });
+});
+
+// Reset questions to built-in INITIAL_QUESTIONS_DATA
+app.post('/api/questions/reset', (_req, res) => {
+  questions = [...INITIAL_QUESTIONS_DATA];
+  saveQuestionsState();
+  res.json({ success: true, data: questions.map(sanitizeServerQuestion) });
+});
+
 
 // Broadcast and warnings
 app.get('/api/broadcast', (req, res) => {
@@ -1472,7 +809,7 @@ Tulis dalam 3-4 kalimat ringkas, formal, dan objektif dalam Bahasa Indonesia.`,
       });
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+        model: 'gemini-4-hydrogen',
         contents: parts.length === 1 ? parts[0].text : { parts },
       });
 
@@ -1946,6 +1283,412 @@ app.post('/api/sync-spreadsheet', async (req, res) => {
       error: err?.message || 'Gagal tersambung ke server Google Sheets. Periksa koneksi internet atau gunakan opsi upload berkas Excel langsung.',
     });
   }
+});
+
+// ========================================================
+// POST-EXAM WEBSITE FEEDBACK & GOOGLE SHEETS WEBHOOK
+// ========================================================
+const FEEDBACK_STORE_FILE = path.join(os.tmpdir(), 'mmo_site_feedback.json');
+let feedbackEntries: SiteFeedbackEntry[] = [];
+let feedbackWebhookUrl: string = (process.env.FEEDBACK_SHEETS_WEBHOOK_URL || '').trim();
+
+function loadFeedbackState(): void {
+  try {
+    if (fs.existsSync(FEEDBACK_STORE_FILE)) {
+      const raw = fs.readFileSync(FEEDBACK_STORE_FILE, 'utf-8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed.entries)) {
+        feedbackEntries = parsed.entries;
+      }
+      if (typeof parsed.webhookUrl === 'string' && parsed.webhookUrl.trim()) {
+        feedbackWebhookUrl = parsed.webhookUrl.trim();
+      } else if (typeof parsed.webhookUrl === 'string' && !process.env.FEEDBACK_SHEETS_WEBHOOK_URL) {
+        feedbackWebhookUrl = parsed.webhookUrl.trim();
+      }
+    }
+  } catch {
+    // Fallback to clean in-memory state
+  }
+}
+
+function saveFeedbackState(): void {
+  try {
+    fs.writeFileSync(
+      FEEDBACK_STORE_FILE,
+      JSON.stringify({
+        entries: feedbackEntries,
+        webhookUrl: feedbackWebhookUrl,
+        updatedAt: Date.now(),
+      }),
+      'utf-8'
+    );
+  } catch {
+    // Ignore read-only filesystem errors
+  }
+}
+
+loadFeedbackState();
+
+function formatWibDateTime(date: Date): string {
+  try {
+    const formatted = new Intl.DateTimeFormat('id-ID', {
+      timeZone: 'Asia/Jakarta',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).format(date);
+    return `${formatted} WIB`;
+  } catch {
+    return `${date.toLocaleString('id-ID')} WIB`;
+  }
+}
+
+function validateWebhookUrl(rawUrl: string): { valid: boolean; normalized: string; error?: string } {
+  const trimmed = String(rawUrl || '').trim();
+  if (!trimmed) {
+    return { valid: true, normalized: '' };
+  }
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      return {
+        valid: false,
+        normalized: trimmed,
+        error: 'URL Webhook harus diawali dengan https:// (atau http:// untuk pengujian lokal).',
+      };
+    }
+    return { valid: true, normalized: parsed.toString() };
+  } catch {
+    return {
+      valid: false,
+      normalized: trimmed,
+      error: 'Format URL Webhook tidak valid. Pastikan Anda menyalin alamat Web App URL dari Google Apps Script dengan lengkap.',
+    };
+  }
+}
+
+async function forwardFeedbackToWebhook(
+  targetUrl: string,
+  entry: SiteFeedbackEntry,
+  rowNumber: number,
+  isTest = false
+): Promise<{ ok: boolean; error?: string }> {
+  const check = validateWebhookUrl(targetUrl);
+  if (!check.valid || !check.normalized) {
+    return { ok: false, error: check.error || 'URL Webhook Google Sheets belum diisi.' };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8500);
+
+  try {
+    const response = await fetch(check.normalized, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json,text/plain,*/*',
+      },
+      body: JSON.stringify({
+        sheetName: 'Saran_Website_MMO2027',
+        rowNumber,
+        id: entry.id,
+        submittedAtWib: entry.submittedAtWib,
+        participantName: entry.participantName,
+        school: entry.school,
+        nisnOrRegNumber: entry.nisnOrRegNumber,
+        category: entry.category,
+        stage: entry.stage,
+        message: entry.message,
+        isTest,
+        source: 'MMO 2027 CBT Website',
+      }),
+      redirect: 'follow',
+      signal: controller.signal,
+    });
+
+    const text = await response.text();
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: `Webhook mengembalikan status HTTP ${response.status}. Periksa deployment Apps Script.`,
+      };
+    }
+
+    if (
+      text.includes('<!DOCTYPE html>') &&
+      (text.includes('accounts.google.com') || text.includes('ServiceLogin') || text.includes('Sign in'))
+    ) {
+      return {
+        ok: false,
+        error: 'Akses Web App Apps Script belum dibuka ke publik. Setel "Who has access" menjadi "Anyone" (Siapa saja).',
+      };
+    }
+
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && (parsed.status === 'error' || parsed.success === false)) {
+        return {
+          ok: false,
+          error: parsed.message || parsed.error || 'Apps Script melaporkan kegagalan penyimpanan baris.',
+        };
+      }
+    } catch {
+      // Plain text or non-JSON success response from custom webhooks is acceptable when HTTP 2xx
+    }
+
+    return { ok: true };
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      return { ok: false, error: 'Koneksi ke Webhook Google Sheets melebihi batas waktu (timeout).' };
+    }
+    return { ok: false, error: err?.message || 'Gagal terhubung ke Webhook Google Sheets.' };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+app.get('/api/feedback', (_req, res) => {
+  res.json({
+    success: true,
+    data: feedbackEntries,
+    webhookUrl: feedbackWebhookUrl,
+  });
+});
+
+app.post('/api/feedback', async (req, res) => {
+  const {
+    participantId,
+    participantName,
+    school,
+    nisnOrRegNumber,
+    category,
+    stage,
+    message,
+  } = req.body || {};
+
+  const cleanMessage = typeof message === 'string' ? message.trim() : '';
+  if (!cleanMessage) {
+    return res.status(400).json({
+      success: false,
+      error: 'Pesan atau saran untuk website tidak boleh kosong.',
+    });
+  }
+
+  const now = new Date();
+  const entry: SiteFeedbackEntry = {
+    id: `fb-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    createdAt: now.getTime(),
+    submittedAtWib: formatWibDateTime(now),
+    participantId: participantId ? String(participantId).trim() : undefined,
+    participantName: String(participantName || 'Peserta MMO').trim(),
+    school: String(school || '-').trim(),
+    nisnOrRegNumber: String(nisnOrRegNumber || '-').trim(),
+    category: category === 'SMP' ? 'SMP' : 'SMA',
+    stage: stage === 'Semifinal' ? 'Semifinal' : 'Penyisihan',
+    message: cleanMessage,
+    webhookStatus: feedbackWebhookUrl ? 'failed' : 'not_configured',
+  };
+
+  feedbackEntries = [entry, ...feedbackEntries];
+  saveFeedbackState();
+
+  if (feedbackWebhookUrl) {
+    const rowNumber = feedbackEntries.length;
+    const syncRes = await forwardFeedbackToWebhook(feedbackWebhookUrl, entry, rowNumber, false);
+    entry.lastSyncAttempt = Date.now();
+    if (syncRes.ok) {
+      entry.webhookStatus = 'synced';
+      entry.webhookError = undefined;
+    } else {
+      entry.webhookStatus = 'failed';
+      entry.webhookError = syncRes.error;
+    }
+    feedbackEntries = feedbackEntries.map((item) => (item.id === entry.id ? entry : item));
+    saveFeedbackState();
+  }
+
+  res.json({
+    success: true,
+    data: entry,
+  });
+});
+
+app.get('/api/feedback/webhook', (_req, res) => {
+  res.json({
+    success: true,
+    webhookUrl: feedbackWebhookUrl,
+  });
+});
+
+app.post('/api/feedback/webhook', (req, res) => {
+  const { webhookUrl } = req.body || {};
+  const check = validateWebhookUrl(webhookUrl ?? '');
+  if (!check.valid) {
+    return res.status(400).json({
+      success: false,
+      error: check.error,
+    });
+  }
+
+  feedbackWebhookUrl = check.normalized;
+  saveFeedbackState();
+
+  res.json({
+    success: true,
+    webhookUrl: feedbackWebhookUrl,
+  });
+});
+
+app.post('/api/feedback/webhook/test', async (req, res) => {
+  const targetUrl = typeof req.body?.webhookUrl === 'string' && req.body.webhookUrl.trim()
+    ? req.body.webhookUrl.trim()
+    : feedbackWebhookUrl;
+
+  if (!targetUrl) {
+    return res.status(400).json({
+      success: false,
+      error: 'Masukkan URL Web App Google Apps Script terlebih dahulu sebelum melakukan uji kirim.',
+    });
+  }
+
+  const now = new Date();
+  const sampleEntry: SiteFeedbackEntry = {
+    id: `fb-test-${Date.now()}`,
+    createdAt: now.getTime(),
+    submittedAtWib: formatWibDateTime(now),
+    participantName: '[TES KONEKSI] Panitia MMO 2027',
+    school: 'HMPS Pendidikan Matematika UMM',
+    nisnOrRegNumber: 'TEST-001',
+    category: 'SMA',
+    stage: 'Penyisihan',
+    message: 'Uji koneksi Webhook Pesan & Saran Website MMO 2027 berhasil terhubung ke Google Sheets.',
+    webhookStatus: 'not_configured',
+  };
+
+  const syncRes = await forwardFeedbackToWebhook(targetUrl, sampleEntry, 1, true);
+  if (!syncRes.ok) {
+    return res.status(400).json({
+      success: false,
+      error: syncRes.error || 'Gagal mengirim uji coba ke Google Sheets.',
+    });
+  }
+
+  res.json({
+    success: true,
+    message: 'Baris uji berhasil dikirim! Silakan cek sheet "Saran_Website_MMO2027" di Google Spreadsheet Anda.',
+  });
+});
+
+app.post('/api/feedback/sync-all', async (_req, res) => {
+  if (!feedbackWebhookUrl) {
+    return res.status(400).json({
+      success: false,
+      error: 'URL Webhook Google Sheets belum dikonfigurasi.',
+    });
+  }
+
+  const chronological = [...feedbackEntries].sort((a, b) => a.createdAt - b.createdAt);
+  let syncedCount = 0;
+  let failedCount = 0;
+  let lastError: string | undefined;
+
+  for (let i = 0; i < chronological.length; i++) {
+    const item = chronological[i];
+    if (item.webhookStatus === 'synced') continue;
+
+    const syncRes = await forwardFeedbackToWebhook(feedbackWebhookUrl, item, i + 1, false);
+    item.lastSyncAttempt = Date.now();
+    if (syncRes.ok) {
+      item.webhookStatus = 'synced';
+      item.webhookError = undefined;
+      syncedCount += 1;
+    } else {
+      item.webhookStatus = 'failed';
+      item.webhookError = syncRes.error;
+      failedCount += 1;
+      lastError = syncRes.error;
+    }
+  }
+
+  feedbackEntries = [...chronological].sort((a, b) => b.createdAt - a.createdAt);
+  saveFeedbackState();
+
+  res.json({
+    success: true,
+    syncedCount,
+    failedCount,
+    lastError,
+    data: feedbackEntries,
+  });
+});
+
+app.post('/api/feedback/:id/sync', async (req, res) => {
+  const { id } = req.params;
+  if (!feedbackWebhookUrl) {
+    return res.status(400).json({
+      success: false,
+      error: 'URL Webhook Google Sheets belum dikonfigurasi.',
+    });
+  }
+
+  const idx = feedbackEntries.findIndex((item) => item.id === id);
+  if (idx < 0) {
+    return res.status(404).json({
+      success: false,
+      error: 'Pesan tidak ditemukan di server.',
+    });
+  }
+
+  const chronologicalIndex = [...feedbackEntries]
+    .sort((a, b) => a.createdAt - b.createdAt)
+    .findIndex((item) => item.id === id);
+
+  const entry = { ...feedbackEntries[idx] };
+  const syncRes = await forwardFeedbackToWebhook(
+    feedbackWebhookUrl,
+    entry,
+    chronologicalIndex >= 0 ? chronologicalIndex + 1 : 1,
+    false
+  );
+
+  entry.lastSyncAttempt = Date.now();
+  if (syncRes.ok) {
+    entry.webhookStatus = 'synced';
+    entry.webhookError = undefined;
+  } else {
+    entry.webhookStatus = 'failed';
+    entry.webhookError = syncRes.error;
+  }
+
+  feedbackEntries[idx] = entry;
+  saveFeedbackState();
+
+  res.json({
+    success: syncRes.ok,
+    data: entry,
+    error: syncRes.ok ? undefined : syncRes.error,
+  });
+});
+
+app.delete('/api/feedback/:id', (req, res) => {
+  const { id } = req.params;
+  const beforeLen = feedbackEntries.length;
+  feedbackEntries = feedbackEntries.filter((item) => item.id !== id);
+  if (feedbackEntries.length !== beforeLen) {
+    saveFeedbackState();
+  }
+  res.json({ success: true, remaining: feedbackEntries.length });
+});
+
+app.delete('/api/feedback', (_req, res) => {
+  feedbackEntries = [];
+  saveFeedbackState();
+  res.json({ success: true });
 });
 
 async function startServer() {

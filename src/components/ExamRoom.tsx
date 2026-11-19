@@ -284,7 +284,7 @@ export const ExamRoom: React.FC<ExamRoomProps> = ({
   const unansweredTotal = Math.max(0, questions.length - answeredTotal - doubtfulTotal);
 
   return (
-    <div className="min-h-screen bg-[#fafafa] text-zinc-900 flex flex-col no-select">
+    <div className="min-h-screen bg-[#EBF1F6] text-[#1E3954] flex flex-col no-select">
       {/* Anti-cheat engine */}
       <AntiCheatGuard
         isActive={true}
@@ -293,24 +293,24 @@ export const ExamRoom: React.FC<ExamRoomProps> = ({
         onUnlockByPin={handleUnlockByPin}
       />
 
-      {/* Dedicated Exam Room Header with clean neutral background */}
-      <header className="sticky top-0 z-30 bg-[#f7f7f8]/95 backdrop-blur-md border-b border-[#D5D5D5] px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3 shadow-2xs">
+      {/* Dedicated Exam Room Header with Steel-Blue & Amber Frame */}
+      <header className="sticky top-0 z-30 bg-[#2C4B6B]/95 backdrop-blur-md border-b-2 border-[#E49548] px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3 shadow-md text-white">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 sm:gap-6">
           {/* Brand & Participant Identity */}
           <div className="flex items-center gap-2.5 sm:gap-3">
-            <div className="w-8 h-8 rounded-2xl bg-[#646464] border border-[#646464] flex items-center justify-center font-bold text-white text-xs tracking-wider shadow-xs">
+            <div className="w-8 h-8 rounded-2xl bg-[#F4E6CC] border-2 border-[#E49548] flex items-center justify-center font-extrabold text-[#1E3954] text-xs tracking-wider shadow-xs">
               M
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 truncate">
-                <span className="text-xs sm:text-sm font-bold text-zinc-900 truncate">
+                <span className="text-xs sm:text-sm font-bold text-white truncate">
                   {participant.fullName || 'Peserta MMO'}
                 </span>
-                <span className="text-[10px] sm:text-xs text-zinc-500 font-mono">
+                <span className="text-[10px] sm:text-xs text-[#F4E6CC] font-mono">
                   · {participant.category} {participant.stage ? `(${participant.stage})` : ''}
                 </span>
               </div>
-              <span className="text-[10px] sm:text-xs text-zinc-500 block truncate max-w-[130px] sm:max-w-xs">
+              <span className="text-[10px] sm:text-xs text-[#DCE9F5] block truncate max-w-[130px] sm:max-w-xs">
                 {participant.school || 'Sekolah'}
               </span>
             </div>
@@ -329,7 +329,7 @@ export const ExamRoom: React.FC<ExamRoomProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowSubmitModal(true)}
-              className="hidden lg:flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-[#646464] hover:bg-[#525252] rounded-2xl transition-all cursor-pointer whitespace-nowrap shadow-xs border border-[#646464]"
+              className="hidden lg:flex items-center gap-1.5 px-4 py-2 text-xs font-extrabold text-[#1E3954] bg-[#E49548] hover:bg-[#CE7D30] rounded-2xl transition-all cursor-pointer whitespace-nowrap shadow-xs border border-[#F4E6CC]/50"
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
               <span>Kumpulkan Ujian</span>
@@ -338,7 +338,7 @@ export const ExamRoom: React.FC<ExamRoomProps> = ({
         </div>
 
         {/* Resource-saving sync & storage status bar */}
-        <div className="max-w-7xl mx-auto mt-2 pt-1.5 border-t border-[#E5E5E5] flex items-center justify-between text-[11px] text-zinc-600">
+        <div className="max-w-7xl mx-auto mt-2 pt-1.5 border-t border-[#4E779F]/50 flex items-center justify-between text-[11px] text-[#DCE9F5]">
           <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
             <span className="flex items-center gap-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-lg font-medium text-[10px] sm:text-[11px]">
               <HardDrive className="w-3 h-3 text-emerald-600 shrink-0" />
@@ -346,13 +346,13 @@ export const ExamRoom: React.FC<ExamRoomProps> = ({
               <span className="text-[10px] text-emerald-700 font-mono">· {lastSavedLocal}</span>
             </span>
 
-            <span className="hidden sm:flex items-center gap-1.5 bg-zinc-100 text-zinc-700 border border-zinc-200 px-2 py-0.5 rounded-lg text-[11px]">
-              <Cloud className="w-3 h-3 text-zinc-500 shrink-0" />
+            <span className="hidden sm:flex items-center gap-1.5 bg-[#243E59] text-[#DCE9F5] border border-[#4E779F]/70 px-2 py-0.5 rounded-lg text-[11px]">
+              <Cloud className="w-3 h-3 text-[#F4E6CC] shrink-0" />
               <span>Sinkron Server:</span>
-              <strong className="font-mono text-zinc-800">
+              <strong className="font-mono text-white">
                 {lastSyncedServer ? lastSyncedServer : 'Menunggu sync berkala'}
               </strong>
-              <span className="text-[10px] text-zinc-400">(Per 3 Menit)</span>
+              <span className="text-[10px] text-[#B8CCE0]">(Per 3 Menit)</span>
             </span>
           </div>
 
@@ -361,7 +361,7 @@ export const ExamRoom: React.FC<ExamRoomProps> = ({
             onClick={() => syncProgressToServer()}
             disabled={isSyncingServer}
             title="Kirim jawaban terbaru ke server sekarang tanpa menunggu 3 menit"
-            className="flex items-center gap-1 text-[11px] font-semibold text-[#646464] hover:text-zinc-950 cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-1 text-[11px] font-semibold text-[#F4E6CC] hover:text-white cursor-pointer disabled:opacity-50"
           >
             <RefreshCw className={`w-3 h-3 ${isSyncingServer ? 'animate-spin' : ''}`} />
             <span>{isSyncingServer ? 'Sinkron...' : 'Sinkron Sekarang'}</span>
@@ -369,13 +369,13 @@ export const ExamRoom: React.FC<ExamRoomProps> = ({
         </div>
 
         {/* Mobile Switcher Tab (HP Responsif) */}
-        <div className="grid grid-cols-3 lg:hidden mt-2 pt-2 border-t border-[#D5D5D5] gap-1.5">
+        <div className="grid grid-cols-3 lg:hidden mt-2 pt-2 border-t border-[#4E779F]/50 gap-1.5">
           <button
             onClick={() => setMobileTab('question')}
-            className={`py-1.5 px-2 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-1 ${
+            className={`py-1.5 px-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1 ${
               mobileTab === 'question'
-                ? 'bg-[#646464] text-white shadow-2xs'
-                : 'bg-white border border-[#D5D5D5] text-zinc-700'
+                ? 'bg-[#F4E6CC] text-[#1E3954] border border-[#E49548] shadow-2xs'
+                : 'bg-[#243E59] border border-[#4E779F] text-[#DCE9F5]'
             }`}
           >
             <Monitor className="w-3.5 h-3.5" />
@@ -383,21 +383,21 @@ export const ExamRoom: React.FC<ExamRoomProps> = ({
           </button>
           <button
             onClick={() => setMobileTab('camera')}
-            className={`py-1.5 px-2 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-1 ${
+            className={`py-1.5 px-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1 ${
               mobileTab === 'camera'
-                ? 'bg-emerald-700 text-white shadow-2xs'
-                : 'bg-white border border-[#D5D5D5] text-emerald-800'
+                ? 'bg-emerald-500 text-white shadow-2xs'
+                : 'bg-[#243E59] border border-[#4E779F] text-emerald-300'
             }`}
           >
-            <Camera className="w-3.5 h-3.5 text-emerald-600" />
+            <Camera className="w-3.5 h-3.5" />
             <span>Kamera</span>
           </button>
           <button
             onClick={() => setMobileTab('palette')}
-            className={`py-1.5 px-2 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-1 ${
+            className={`py-1.5 px-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1 ${
               mobileTab === 'palette'
-                ? 'bg-[#646464] text-white shadow-2xs'
-                : 'bg-white border border-[#D5D5D5] text-zinc-700'
+                ? 'bg-[#F4E6CC] text-[#1E3954] border border-[#E49548] shadow-2xs'
+                : 'bg-[#243E59] border border-[#4E779F] text-[#DCE9F5]'
             }`}
           >
             <LayoutGrid className="w-3.5 h-3.5" />
@@ -434,15 +434,15 @@ export const ExamRoom: React.FC<ExamRoomProps> = ({
 
       {/* Proctor Notice Banner */}
       {proctorMessage && (
-        <div className="bg-[#18181b] text-white px-4 py-2.5 flex items-center justify-between gap-3 text-xs sm:text-sm border-b border-zinc-700 shadow-md">
+        <div className="bg-[#243E59] text-white px-4 py-2.5 flex items-center justify-between gap-3 text-xs sm:text-sm border-b-2 border-[#E49548] shadow-md">
           <div className="flex items-center gap-2 max-w-5xl mx-auto flex-1">
-            <BellRing className="w-4 h-4 text-amber-400 shrink-0" />
-            <span className="font-semibold text-amber-300">Pemberitahuan Pengawas:</span>
-            <span className="text-zinc-200">{proctorMessage}</span>
+            <BellRing className="w-4 h-4 text-[#E49548] shrink-0" />
+            <span className="font-semibold text-[#F4E6CC]">Pemberitahuan Pengawas:</span>
+            <span className="text-white">{proctorMessage}</span>
           </div>
           <button
             onClick={() => setProctorMessage(null)}
-            className="text-zinc-400 hover:text-white p-1 rounded transition-colors"
+            className="text-[#DCE9F5] hover:text-white p-1 rounded transition-colors"
             title="Tutup pesan"
           >
             <X className="w-4 h-4" />
@@ -470,7 +470,7 @@ export const ExamRoom: React.FC<ExamRoomProps> = ({
               isLast={currentIndex === questions.length - 1}
             />
           ) : (
-            <div className="bg-white border border-[#D5D5D5] rounded-3xl p-8 text-center text-zinc-500">
+            <div className="bg-white border-2 border-[#E49548]/60 rounded-3xl p-8 text-center text-[#4E779F]">
               Tidak ada soal tersedia untuk sesi ini.
             </div>
           )}
@@ -497,9 +497,9 @@ export const ExamRoom: React.FC<ExamRoomProps> = ({
               <button
                 type="button"
                 onClick={() => setMobileTab('question')}
-                className="mt-3 w-full py-2.5 rounded-2xl bg-[#646464] hover:bg-[#525252] text-white text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                className="mt-3 w-full py-2.5 rounded-2xl bg-[#2C4B6B] hover:bg-[#243E59] text-white border border-[#E49548] text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
               >
-                <Monitor className="w-4 h-4" />
+                <Monitor className="w-4 h-4 text-[#F4E6CC]" />
                 <span>Kembali ke Lembar Soal</span>
               </button>
             )}
@@ -507,10 +507,10 @@ export const ExamRoom: React.FC<ExamRoomProps> = ({
 
           {/* Mobile persistent camera indicator bar */}
           {mobileTab === 'question' && (
-            <div className="block lg:hidden bg-zinc-50 border border-[#D5D5D5] rounded-2xl p-2.5 flex items-center justify-between shadow-2xs">
+            <div className="block lg:hidden bg-white border border-[#B8CCE0] rounded-2xl p-2.5 flex items-center justify-between shadow-2xs">
               <div className="flex items-center gap-2">
                 <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-[11px] font-semibold text-zinc-800">
+                <span className="text-[11px] font-semibold text-[#1E3954]">
                   Kamera Pengawas Terhubung & Aktif
                 </span>
               </div>
@@ -543,7 +543,7 @@ export const ExamRoom: React.FC<ExamRoomProps> = ({
       {/* Mobile Sticky Bottom Action Bar (Khusus Layar HP agar Tombol Selesai Mudah Dilihat & Dijangkau) */}
       <aside
         aria-label="Bilah Aksi Bawah Mobile"
-        className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-[#D5D5D5] px-3.5 py-2.5 shadow-lg lg:hidden flex items-center justify-between gap-2"
+        className="fixed bottom-0 left-0 right-0 z-40 bg-[#2C4B6B]/95 backdrop-blur-md border-t-2 border-[#E49548] px-3.5 py-2.5 shadow-lg lg:hidden flex items-center justify-between gap-2"
       >
         {/* Tombol Cepat Sebelumnya & Selanjutnya */}
         <div className="flex items-center gap-1.5 shrink-0">
@@ -551,7 +551,7 @@ export const ExamRoom: React.FC<ExamRoomProps> = ({
             type="button"
             onClick={() => setCurrentIndex((prev) => Math.max(0, prev - 1))}
             disabled={currentIndex === 0}
-            className="w-9 h-9 rounded-xl border border-[#D5D5D5] bg-[#f7f7f8] hover:bg-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-zinc-700 cursor-pointer shadow-2xs"
+            className="w-9 h-9 rounded-xl border border-[#4E779F] bg-[#243E59] hover:bg-[#3B5F84] disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-white cursor-pointer shadow-2xs"
             title="Soal Sebelumnya"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -561,7 +561,7 @@ export const ExamRoom: React.FC<ExamRoomProps> = ({
             type="button"
             onClick={() => setCurrentIndex((prev) => Math.min(questions.length - 1, prev + 1))}
             disabled={currentIndex === questions.length - 1}
-            className="w-9 h-9 rounded-xl border border-[#D5D5D5] bg-[#f7f7f8] hover:bg-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-zinc-700 cursor-pointer shadow-2xs"
+            className="w-9 h-9 rounded-xl border border-[#4E779F] bg-[#243E59] hover:bg-[#3B5F84] disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-white cursor-pointer shadow-2xs"
             title="Soal Selanjutnya"
           >
             <ArrowRight className="w-4 h-4" />
@@ -572,10 +572,10 @@ export const ExamRoom: React.FC<ExamRoomProps> = ({
         <button
           type="button"
           onClick={() => setMobileTab(mobileTab === 'palette' ? 'question' : 'palette')}
-          className={`flex-1 max-w-[130px] sm:max-w-[160px] py-2 px-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs truncate ${
+          className={`flex-1 max-w-[130px] sm:max-w-[160px] py-2 px-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs truncate ${
             mobileTab === 'palette'
-              ? 'bg-zinc-800 border-zinc-800 text-white'
-              : 'bg-[#fafafa] border-[#D5D5D5] text-zinc-700 hover:bg-zinc-100'
+              ? 'bg-[#F4E6CC] border-[#E49548] text-[#1E3954]'
+              : 'bg-[#243E59] border-[#4E779F] text-[#DCE9F5] hover:bg-[#3B5F84]'
           }`}
           title="Buka daftar nomor soal"
         >
@@ -587,47 +587,47 @@ export const ExamRoom: React.FC<ExamRoomProps> = ({
         <button
           type="button"
           onClick={() => setShowSubmitModal(true)}
-          className="py-2.5 px-4 bg-[#27272a] hover:bg-black text-white font-extrabold text-xs rounded-2xl transition-all shadow-md flex items-center gap-2 cursor-pointer border border-zinc-800 active:scale-95 shrink-0 ring-1 ring-zinc-700/50"
+          className="py-2.5 px-4 bg-[#E49548] hover:bg-[#CE7D30] text-[#1E3954] font-extrabold text-xs rounded-2xl transition-all shadow-md flex items-center gap-2 cursor-pointer border border-[#F4E6CC]/60 active:scale-95 shrink-0"
           title="Kumpulkan lembar jawaban ujian"
         >
-          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <CheckCircle2 className="w-4 h-4 text-[#1E3954] shrink-0" />
           <span>Selesai Ujian</span>
         </button>
       </aside>
 
       {/* Confirmation Submit Modal */}
       {showSubmitModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-[#D5D5D5] rounded-3xl w-full max-w-md p-6 sm:p-8 shadow-2xl text-center">
-            <div className="w-12 h-12 rounded-2xl bg-[#646464] text-white flex items-center justify-center mx-auto mb-3 shadow-xs">
-              <CheckCircle2 className="w-6 h-6 text-white" />
+        <div className="fixed inset-0 z-50 bg-[#1E3954]/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border-2 border-[#E49548] rounded-3xl w-full max-w-md p-6 sm:p-8 shadow-2xl text-center">
+            <div className="w-12 h-12 rounded-2xl bg-[#2C4B6B] border-2 border-[#E49548] text-[#F4E6CC] flex items-center justify-center mx-auto mb-3 shadow-xs">
+              <CheckCircle2 className="w-6 h-6 text-[#E49548]" />
             </div>
-            <h3 className="text-lg font-bold text-zinc-900 mb-2">
+            <h3 className="text-lg font-extrabold text-[#1E3954] mb-2">
               Konfirmasi Selesai Ujian MMO
             </h3>
-            <p className="text-xs text-zinc-600 mb-5 leading-relaxed">
+            <p className="text-xs text-[#4E779F] mb-5 leading-relaxed">
               Apakah Anda yakin ingin mengumpulkan seluruh lembar jawaban? Setelah dikumpulkan, bukti tanda terima resmi akan langsung diterbitkan dan data tersimpan di panitia.
             </p>
 
             {/* Answer Summary Card */}
-            <div className="grid grid-cols-3 gap-2 bg-[#f7f7f8] border border-[#D5D5D5] rounded-2xl p-3 mb-5 text-center text-xs">
+            <div className="grid grid-cols-3 gap-2 bg-[#FAF3E3] border border-[#E49548]/50 rounded-2xl p-3 mb-5 text-center text-xs">
               <div className="p-1">
-                <span className="text-zinc-500 block text-[10px]">Dijawab</span>
-                <span className="font-mono font-bold text-zinc-900 text-sm">{answeredTotal}</span>
+                <span className="text-[#4E779F] block text-[10px] font-semibold">Dijawab</span>
+                <span className="font-mono font-bold text-[#1E3954] text-sm">{answeredTotal}</span>
               </div>
               <div className="p-1">
-                <span className="text-zinc-500 block text-[10px]">Ragu-ragu</span>
-                <span className="font-mono font-bold text-amber-600 text-sm">{doubtfulTotal}</span>
+                <span className="text-[#4E779F] block text-[10px] font-semibold">Ragu-ragu</span>
+                <span className="font-mono font-bold text-[#CE7D30] text-sm">{doubtfulTotal}</span>
               </div>
               <div className="p-1">
-                <span className="text-zinc-500 block text-[10px]">Kosong</span>
-                <span className="font-mono font-bold text-zinc-400 text-sm">{unansweredTotal}</span>
+                <span className="text-[#4E779F] block text-[10px] font-semibold">Kosong</span>
+                <span className="font-mono font-bold text-[#4E779F] text-sm">{unansweredTotal}</span>
               </div>
             </div>
 
             {unansweredTotal > 0 && (
-              <div className="mb-5 flex items-center gap-2 text-left bg-amber-50 border border-amber-200 p-2.5 rounded-xl text-[11px] text-amber-800">
-                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <div className="mb-5 flex items-center gap-2 text-left bg-[#FAF3E3] border border-[#E49548] p-2.5 rounded-xl text-[11px] text-[#1E3954]">
+                <AlertTriangle className="w-4 h-4 text-[#CE7D30] shrink-0" />
                 <span>Perhatian: Masih ada {unansweredTotal} soal yang belum Anda jawab.</span>
               </div>
             )}
@@ -635,13 +635,13 @@ export const ExamRoom: React.FC<ExamRoomProps> = ({
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setShowSubmitModal(false)}
-                className="flex-1 py-2.5 px-4 rounded-2xl bg-[#f7f7f8] hover:bg-[#D5D5D5]/50 border border-[#D5D5D5] text-zinc-800 font-semibold text-xs transition-colors cursor-pointer"
+                className="flex-1 py-2.5 px-4 rounded-2xl bg-[#FAF3E3] hover:bg-[#F4E6CC] border border-[#B8CCE0] text-[#1E3954] font-bold text-xs transition-colors cursor-pointer"
               >
                 Kembali Periksa
               </button>
               <button
                 onClick={handleConfirmSubmit}
-                className="flex-1 py-2.5 px-4 rounded-2xl bg-[#646464] hover:bg-[#525252] text-white font-semibold text-xs transition-all cursor-pointer shadow-xs border border-[#646464]"
+                className="flex-1 py-2.5 px-4 rounded-2xl bg-[#E49548] hover:bg-[#CE7D30] text-[#1E3954] font-extrabold text-xs transition-all cursor-pointer shadow-xs border border-[#CE7D30]"
               >
                 Ya, Kumpulkan
               </button>

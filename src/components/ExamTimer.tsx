@@ -42,20 +42,20 @@ export const ExamTimer: React.FC<ExamTimerProps> = ({
       {/* Timer Capsule in Header */}
       <div className="flex items-center gap-3">
         <div
-          className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg border transition-all ${
+          className={`flex items-center gap-2.5 px-3 py-1.5 rounded-xl border-2 transition-all ${
             isCriticalTime
-              ? 'bg-rose-50 border-rose-300 text-rose-900 animate-pulse'
+              ? 'bg-rose-50 border-rose-400 text-rose-900 animate-pulse'
               : isLowTime
-              ? 'bg-amber-50 border-amber-300 text-amber-900'
-              : 'bg-zinc-100 border-zinc-200 text-zinc-900'
+              ? 'bg-amber-50 border-[#E49548] text-[#1E3954]'
+              : 'bg-[#F4E6CC] border-[#E49548] text-[#1E3954]'
           }`}
         >
-          <Clock className={`w-4 h-4 ${isCriticalTime ? 'text-rose-600' : isLowTime ? 'text-amber-600' : 'text-zinc-600'}`} />
+          <Clock className={`w-4 h-4 ${isCriticalTime ? 'text-rose-600' : isLowTime ? 'text-[#CE7D30]' : 'text-[#2C4B6B]'}`} />
           <div className="flex flex-col">
-            <span className="text-[10px] uppercase tracking-wider text-zinc-500 leading-none">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#2C4B6B] leading-none">
               Sisa Waktu
             </span>
-            <span className="font-mono text-sm font-bold tabular-nums tracking-wider text-zinc-900">
+            <span className="font-mono text-sm font-extrabold tabular-nums tracking-wider text-[#1E3954]">
               {formattedTime}
             </span>
           </div>
@@ -64,13 +64,13 @@ export const ExamTimer: React.FC<ExamTimerProps> = ({
 
       {/* Floating Alert when 3 minutes remain */}
       {showUrgentBanner && (
-        <div className="fixed top-20 right-6 z-50 bg-white border border-rose-300 text-zinc-900 p-4 rounded-xl shadow-xl max-w-sm flex items-start gap-3 animate-in fade-in slide-in-from-top-4">
+        <div className="fixed top-20 right-6 z-50 bg-white border-2 border-rose-400 text-[#1E3954] p-4 rounded-xl shadow-xl max-w-sm flex items-start gap-3 animate-in fade-in slide-in-from-top-4">
           <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
           <div>
             <h4 className="text-sm font-bold text-rose-900">
               Waktu Tersisa Kurang dari 3 Menit!
             </h4>
-            <p className="text-xs text-zinc-600 mt-1">
+            <p className="text-xs text-[#4E779F] mt-1">
               Seluruh jawaban akan dikumpulkan secara otomatis ke server saat waktu habis. Periksa kembali jawaban Anda.
             </p>
           </div>

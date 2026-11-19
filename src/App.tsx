@@ -36,52 +36,22 @@ export default function App() {
 
   const [submittedAnswers, setSubmittedAnswers] = useState<Record<string, UserAnswer>>({});
 
-  // Questions bank state (customizable via Proctor Dashboard)
-  const [allQuestions, setAllQuestions] = useState<Question[]>(() => {
-    try {
-      const stored = localStorage.getItem('mmo_bank_soal');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return sanitizeQuestionsList(parsed);
-        }
-      }
-    } catch (e) {
-      console.warn('Could not read stored questions:', e);
-    }
-    return sanitizeQuestionsList(INITIAL_QUESTIONS_DATA);
-  });
+  // Questions bank state (synced with server persistent question bank)
+  const [allQuestions, setAllQuestions] = useState<Question[]>(() =>
+    sanitizeQuestionsList(INITIAL_QUESTIONS_DATA)
+  );
 
-  // Automatically scrub and sanitize any legacy localStorage question data on load
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem('mmo_bank_soal') || localStorage.getItem('mmo_questions_data');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const cleaned = sanitizeQuestionsList(parsed);
-          localStorage.setItem('mmo_bank_soal', JSON.stringify(cleaned));
-          localStorage.setItem('mmo_questions_data', JSON.stringify(cleaned));
-          setAllQuestions(cleaned);
-        }
+    let active = true;
+    ApiService.getQuestions().then((serverQuestions) => {
+      if (active && Array.isArray(serverQuestions)) {
+        setAllQuestions(sanitizeQuestionsList(serverQuestions));
       }
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  const handleAddQuestion = (newQ: Question) => {
-    setAllQuestions((prev) => {
-      const updated = sanitizeQuestionsList([newQ, ...prev]);
-      try {
-        localStorage.setItem('mmo_bank_soal', JSON.stringify(updated));
-        localStorage.setItem('mmo_questions_data', JSON.stringify(updated));
-      } catch (e) {
-        console.warn('Could not save question to storage:', e);
-      }
-      return updated;
     });
-  };
+    return () => {
+      active = false;
+    };
+  }, [currentView]);
 
   // Filter questions by participant category and competition stage
   const activeQuestions = useMemo(() => {
@@ -210,7 +180,13 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-white text-zinc-900 flex flex-col font-sans">
+    <div
+      className={`min-h-screen flex flex-col font-sans ${
+        currentView === 'exam'
+          ? 'bg-[#EBF1F6] text-[#1E3954]'
+          : 'mmo-poster-canvas text-white'
+      }`}
+    >
       {/* Top Navbar */}
       <TopNavbar
         currentView={currentView}
@@ -251,8 +227,7 @@ export default function App() {
           <ProctorDashboard
             onBackToPortal={() => setCurrentView('portal')}
             questions={allQuestions}
-            onAddQuestion={handleAddQuestion}
-            onUpdateAllQuestions={(updated) => setAllQuestions(updated)}
+            onQuestionsChange={(next) => setAllQuestions(sanitizeQuestionsList(next))}
           />
         )}
 

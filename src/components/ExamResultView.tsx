@@ -105,19 +105,19 @@ export const ExamResultView: React.FC<ExamResultViewProps> = ({
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 lg:py-12 space-y-8">
       {/* Official Certificate & Result Header Card */}
-      <div className="bg-[#181a24] border border-[#262835] rounded-2xl p-6 lg:p-10 shadow-2xl relative overflow-hidden">
+      <div className="bg-[#2C4B6B]/95 border-2 border-[#E49548] rounded-3xl p-6 lg:p-10 shadow-2xl relative overflow-hidden text-white">
         {/* Subtle background decoration */}
-        <div className="absolute top-0 right-0 w-80 h-80 bg-slate-400/5 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute top-0 right-0 w-80 h-80 bg-[#E49548]/10 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-[#262835]">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-[#4E779F]/50">
           <div>
-            <span className="text-xs font-semibold text-slate-400 tracking-wider uppercase block mb-1">
-              Lembar Hasil Penilaian Instan · MMO 2026
+            <span className="inline-block text-xs font-extrabold text-[#1E3954] bg-[#F4E6CC] px-3 py-1 rounded-full tracking-wider uppercase mb-2 shadow-xs">
+              Lembar Hasil Penilaian Instan · MMO 2027
             </span>
-            <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">
+            <h1 className="text-2xl lg:text-3xl font-extrabold text-white tracking-tight">
               Matriks Mathematics Olympiad
             </h1>
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="text-xs text-[#DCE9F5] mt-1">
               Universitas Muhammadiyah Malang · Prodi Pendidikan Matematika · HMPS MATRIKS Bidang Keilmuan
             </p>
           </div>
@@ -125,14 +125,14 @@ export const ExamResultView: React.FC<ExamResultViewProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={handlePrint}
-              className="px-3.5 py-2 rounded-lg bg-[#22242f] hover:bg-[#2c303f] border border-[#333748] text-xs font-semibold text-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer"
+              className="px-3.5 py-2 rounded-xl bg-[#243E59] hover:bg-[#3B5F84] border border-[#E49548] text-xs font-bold text-[#F4E6CC] transition-colors flex items-center gap-1.5 cursor-pointer"
             >
-              <Printer className="w-4 h-4 text-slate-300" />
+              <Printer className="w-4 h-4 text-[#E49548]" />
               Cetak / Simpan PDF
             </button>
             <button
               onClick={onGoToDashboard}
-              className="px-3.5 py-2 rounded-lg bg-slate-200 hover:bg-white text-slate-900 text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
+              className="px-3.5 py-2 rounded-xl bg-[#E49548] hover:bg-[#CE7D30] text-[#1E3954] text-xs font-extrabold transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
             >
               Buka Dasbor Pengawas
             </button>
@@ -140,82 +140,82 @@ export const ExamResultView: React.FC<ExamResultViewProps> = ({
         </div>
 
         {/* Participant Profile Strip */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 py-6 border-b border-[#262835] text-xs">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 py-6 border-b border-[#4E779F]/50 text-xs">
           <div>
-            <span className="text-slate-400 block mb-0.5">Nama Peserta</span>
-            <span className="text-sm font-semibold text-white truncate block">{participant.fullName}</span>
+            <span className="text-[#DCE9F5] block mb-0.5">Nama Peserta</span>
+            <span className="text-sm font-bold text-white truncate block">{participant.fullName}</span>
           </div>
           <div>
-            <span className="text-slate-400 block mb-0.5">Asal Sekolah</span>
-            <span className="text-sm font-semibold text-slate-200 truncate block">{participant.school}</span>
+            <span className="text-[#DCE9F5] block mb-0.5">Asal Sekolah</span>
+            <span className="text-sm font-bold text-white truncate block">{participant.school}</span>
           </div>
           <div>
-            <span className="text-slate-400 block mb-0.5">Nomor Ujian / NISN</span>
-            <span className="text-sm font-mono font-semibold text-slate-200 block">{participant.nisnOrRegNumber}</span>
+            <span className="text-[#DCE9F5] block mb-0.5">Nomor Ujian / NISN</span>
+            <span className="text-sm font-mono font-bold text-[#F4E6CC] block">{participant.nisnOrRegNumber}</span>
           </div>
           <div>
-            <span className="text-slate-400 block mb-0.5">Kategori / Babak</span>
-            <span className="text-sm font-semibold text-slate-200 block">{participant.category} · {participant.stage || 'Penyisihan'}</span>
+            <span className="text-[#DCE9F5] block mb-0.5">Kategori / Babak</span>
+            <span className="text-sm font-bold text-white block">{participant.category} · {participant.stage || 'Penyisihan'}</span>
           </div>
           <div>
-            <span className="text-slate-400 block mb-0.5">Kota / Domisili</span>
-            <span className="text-sm font-semibold text-slate-200 block">{participant.city || '-'}</span>
+            <span className="text-[#DCE9F5] block mb-0.5">Kota / Domisili</span>
+            <span className="text-sm font-bold text-white block">{participant.city || '-'}</span>
           </div>
           <div>
-            <span className="text-slate-400 block mb-0.5">Email Akun</span>
-            <span className="text-sm font-mono font-semibold text-slate-200 truncate block">{participant.email || '-'}</span>
+            <span className="text-[#DCE9F5] block mb-0.5">Email Akun</span>
+            <span className="text-sm font-mono font-bold text-[#F4E6CC] truncate block">{participant.email || '-'}</span>
           </div>
         </div>
 
         {/* Score Overview Metrics */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-6">
-          <div className="bg-[#121316] border border-[#252735] p-4 rounded-xl">
-            <span className="text-xs text-slate-400 block mb-1">Skor Akhir Olimpiade</span>
+          <div className="bg-[#243E59] border border-[#E49548]/60 p-4 rounded-2xl">
+            <span className="text-xs text-[#F4E6CC] block mb-1 font-semibold">Skor Akhir Olimpiade</span>
             <div className="flex items-baseline gap-1.5">
-              <span className="text-3xl lg:text-4xl font-mono font-bold text-white tabular-nums">
+              <span className="text-3xl lg:text-4xl font-mono font-extrabold text-white tabular-nums">
                 {stats.totalScore}
               </span>
-              <span className="text-xs text-slate-400 font-mono">/ {stats.maxScore}</span>
+              <span className="text-xs text-[#DCE9F5] font-mono">/ {stats.maxScore}</span>
             </div>
-            <span className="text-[11px] text-slate-400 mt-1 block">
+            <span className="text-[11px] text-[#DCE9F5] mt-1 block">
               Rumus: (Benar × 4) + (Salah × -1)
             </span>
           </div>
 
-          <div className="bg-[#121316] border border-[#252735] p-4 rounded-xl">
-            <span className="text-xs text-slate-400 block mb-1">Akurasi Jawaban</span>
+          <div className="bg-[#243E59] border border-[#4E779F] p-4 rounded-2xl">
+            <span className="text-xs text-[#F4E6CC] block mb-1 font-semibold">Akurasi Jawaban</span>
             <div className="flex items-baseline gap-1.5">
-              <span className="text-3xl lg:text-4xl font-mono font-bold text-slate-100 tabular-nums">
+              <span className="text-3xl lg:text-4xl font-mono font-extrabold text-white tabular-nums">
                 {stats.accuracy}%
               </span>
             </div>
-            <span className="text-[11px] text-slate-400 mt-1 block">
+            <span className="text-[11px] text-[#DCE9F5] mt-1 block">
               {stats.correctCount} dari {questions.length} soal benar
             </span>
           </div>
 
-          <div className="bg-[#121316] border border-[#252735] p-4 rounded-xl">
-            <span className="text-xs text-slate-400 block mb-1">Distribusi Jawaban</span>
+          <div className="bg-[#243E59] border border-[#4E779F] p-4 rounded-2xl">
+            <span className="text-xs text-[#F4E6CC] block mb-1 font-semibold">Distribusi Jawaban</span>
             <div className="flex items-center gap-3 text-xs mt-2 font-mono">
-              <span className="text-emerald-400 font-bold">✓ {stats.correctCount}</span>
-              <span className="text-rose-400 font-bold">✗ {stats.wrongCount}</span>
-              <span className="text-slate-400 font-bold">○ {stats.blankCount}</span>
+              <span className="text-emerald-300 font-bold">✓ {stats.correctCount}</span>
+              <span className="text-rose-300 font-bold">✗ {stats.wrongCount}</span>
+              <span className="text-[#DCE9F5] font-bold">○ {stats.blankCount}</span>
             </div>
-            <span className="text-[11px] text-slate-400 mt-2 block">
+            <span className="text-[11px] text-[#DCE9F5] mt-2 block">
               Benar / Salah / Kosong
             </span>
           </div>
 
-          <div className="bg-[#121316] border border-[#252735] p-4 rounded-xl">
-            <span className="text-xs text-slate-400 block mb-1">Integritas Proktor AI</span>
+          <div className="bg-[#243E59] border border-[#4E779F] p-4 rounded-2xl">
+            <span className="text-xs text-[#F4E6CC] block mb-1 font-semibold">Integritas Proktor AI</span>
             <div className="flex items-baseline gap-1.5">
-              <span className={`text-3xl lg:text-4xl font-mono font-bold tabular-nums ${
-                trustScore > 85 ? 'text-emerald-400' : trustScore > 65 ? 'text-amber-400' : 'text-rose-400'
+              <span className={`text-3xl lg:text-4xl font-mono font-extrabold tabular-nums ${
+                trustScore > 85 ? 'text-emerald-300' : trustScore > 65 ? 'text-[#E49548]' : 'text-rose-300'
               }`}>
                 {trustScore}%
               </span>
             </div>
-            <span className="text-[11px] text-slate-400 mt-1 block">
+            <span className="text-[11px] text-[#DCE9F5] mt-1 block">
               {violations.length} Pelanggaran tercatat
             </span>
           </div>
@@ -223,11 +223,14 @@ export const ExamResultView: React.FC<ExamResultViewProps> = ({
       </div>
 
       {/* Domain Breakdown Matrix */}
-      <div className="bg-[#181a24] border border-[#262833] rounded-2xl p-6 lg:p-8 shadow-xl">
-        <h3 className="text-base font-bold text-white mb-1">
+      <div className="bg-[#2C4B6B]/95 border-2 border-[#E49548] rounded-3xl p-6 lg:p-8 shadow-xl text-white">
+        <span className="inline-block text-[11px] font-extrabold uppercase tracking-wider bg-[#F4E6CC] text-[#1E3954] px-3 py-1 rounded-full mb-2">
+          Pemetaan Bidang
+        </span>
+        <h3 className="text-lg font-extrabold text-white mb-1">
           Analisis Penguasaan Bidang Matematika
         </h3>
-        <p className="text-xs text-slate-400 mb-6">
+        <p className="text-xs text-[#DCE9F5] mb-6">
           Evaluasi kemampuan analitis peserta berdasarkan 4 domain olimpiade matematika.
         </p>
 
@@ -237,18 +240,18 @@ export const ExamResultView: React.FC<ExamResultViewProps> = ({
             const pct = data.total > 0 ? Math.round((data.correct / data.total) * 100) : 0;
 
             return (
-              <div key={dom} className="bg-[#13141b] border border-[#272937] p-4 rounded-xl flex flex-col justify-between">
+              <div key={dom} className="bg-[#243E59] border border-[#4E779F] p-4 rounded-2xl flex flex-col justify-between">
                 <div>
-                  <span className="text-xs font-semibold text-slate-200 block mb-1">{dom}</span>
-                  <div className="flex items-baseline justify-between text-xs text-slate-400 mb-2">
-                    <span>Akurasi: <strong className="text-slate-100 font-mono">{pct}%</strong></span>
-                    <span>Skor: <strong className="text-slate-100 font-mono">{data.score}</strong></span>
+                  <span className="text-xs font-bold text-[#F4E6CC] block mb-1">{dom}</span>
+                  <div className="flex items-baseline justify-between text-xs text-[#DCE9F5] mb-2">
+                    <span>Akurasi: <strong className="text-white font-mono">{pct}%</strong></span>
+                    <span>Skor: <strong className="text-white font-mono">{data.score}</strong></span>
                   </div>
-                  <div className="w-full h-1.5 bg-[#1f212c] rounded-full overflow-hidden">
-                    <div className="h-full bg-slate-300 rounded-full" style={{ width: `${pct}%` }} />
+                  <div className="w-full h-2 bg-[#1E3954] rounded-full overflow-hidden border border-[#4E779F]/50">
+                    <div className="h-full bg-[#E49548] rounded-full" style={{ width: `${pct}%` }} />
                   </div>
                 </div>
-                <div className="text-[11px] text-slate-400 mt-3 pt-2 border-t border-[#222430] flex justify-between">
+                <div className="text-[11px] text-[#DCE9F5] mt-3 pt-2 border-t border-[#4E779F]/50 flex justify-between">
                   <span>{data.correct} Benar</span>
                   <span>{data.wrong} Salah</span>
                   <span>{data.blank} Kosong</span>
@@ -261,18 +264,18 @@ export const ExamResultView: React.FC<ExamResultViewProps> = ({
 
       {/* Anti-cheat & Proctor Log if any */}
       {violations.length > 0 && (
-        <div className="bg-[#181a24] border border-[#262833] rounded-2xl p-6 shadow-xl">
+        <div className="bg-[#2C4B6B]/95 border-2 border-[#E49548] rounded-3xl p-6 shadow-xl text-white">
           <div className="flex items-center gap-2 mb-3">
-            <ShieldCheck className="w-4 h-4 text-amber-400" />
+            <ShieldCheck className="w-4 h-4 text-[#E49548]" />
             <h3 className="text-sm font-bold text-white">
               Log Pelanggaran Proktor AI & Anti-Cheat
             </h3>
           </div>
           <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
             {violations.map((v) => (
-              <div key={v.id} className="text-xs bg-[#13141b] border border-[#272937] p-2.5 rounded-lg flex items-center justify-between">
-                <span className="text-slate-300">{v.description}</span>
-                <span className="text-slate-400 font-mono text-[11px] shrink-0 ml-3">
+              <div key={v.id} className="text-xs bg-[#243E59] border border-[#4E779F] p-2.5 rounded-xl flex items-center justify-between">
+                <span className="text-white">{v.description}</span>
+                <span className="text-[#F4E6CC] font-mono text-[11px] shrink-0 ml-3">
                   {new Date(v.timestamp).toLocaleTimeString('id-ID')}
                 </span>
               </div>
@@ -282,13 +285,13 @@ export const ExamResultView: React.FC<ExamResultViewProps> = ({
       )}
 
       {/* Full Question Review and Mathematical Solutions */}
-      <div className="bg-[#181a24] border border-[#262833] rounded-2xl p-6 lg:p-8 shadow-xl">
-        <div className="flex items-center justify-between pb-4 mb-6 border-b border-[#262833]">
+      <div className="bg-[#2C4B6B]/95 border-2 border-[#E49548] rounded-3xl p-6 lg:p-8 shadow-xl text-white">
+        <div className="flex items-center justify-between pb-4 mb-6 border-b border-[#4E779F]/50">
           <div>
-            <h3 className="text-base font-bold text-white">
+            <h3 className="text-lg font-extrabold text-white">
               Pembahasan Lengkap & Kunci Jawaban
             </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-[#DCE9F5] mt-0.5">
               Pelajari langkah pembuktian matematis dan rumus solusi resmi dari Dewan Juri MMO.
             </p>
           </div>
@@ -303,7 +306,7 @@ export const ExamResultView: React.FC<ExamResultViewProps> = ({
                 setExpandedSolutions(next);
               }
             }}
-            className="text-xs text-slate-300 hover:text-white underline cursor-pointer"
+            className="text-xs font-bold text-[#F4E6CC] hover:text-white underline cursor-pointer"
           >
             {Object.keys(expandedSolutions).length === questions.length ? 'Tutup Semua' : 'Buka Semua Pembahasan'}
           </button>
@@ -319,67 +322,67 @@ export const ExamResultView: React.FC<ExamResultViewProps> = ({
             return (
               <div
                 key={q.id}
-                className="bg-[#13141c] border border-[#252735] rounded-xl overflow-hidden transition-all"
+                className="bg-[#243E59] border border-[#4E779F] rounded-2xl overflow-hidden transition-all"
               >
                 {/* Header row */}
                 <div
                   onClick={() => toggleSolution(q.id)}
-                  className="p-4 flex items-center justify-between gap-4 cursor-pointer hover:bg-[#171822] transition-colors"
+                  className="p-4 flex items-center justify-between gap-4 cursor-pointer hover:bg-[#3B5F84]/60 transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-7 h-7 rounded-lg flex items-center justify-center font-mono font-bold text-xs shrink-0 bg-[#1e202a] text-slate-300">
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center font-mono font-bold text-xs shrink-0 bg-[#F4E6CC] text-[#1E3954]">
                       {idx + 1}
                     </div>
 
                     <div>
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="font-semibold text-slate-200">{q.domain}</span>
-                        <span className="text-slate-400">·</span>
-                        <span className="text-slate-400">Pilihan Anda: <strong className="text-slate-200">{userAns || 'Kosong'}</strong></span>
-                        <span className="text-slate-400">·</span>
-                        <span className="text-slate-400">Kunci: <strong className="text-emerald-400">{q.correctAnswer}</strong></span>
+                      <div className="flex items-center gap-2 text-xs flex-wrap">
+                        <span className="font-bold text-white">{q.domain}</span>
+                        <span className="text-[#B8CCE0]">·</span>
+                        <span className="text-[#DCE9F5]">Pilihan Anda: <strong className="text-white">{userAns || 'Kosong'}</strong></span>
+                        <span className="text-[#B8CCE0]">·</span>
+                        <span className="text-[#DCE9F5]">Kunci: <strong className="text-emerald-300">{q.correctAnswer}</strong></span>
                       </div>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-3">
                     {isBlank ? (
-                      <span className="flex items-center gap-1 text-xs text-slate-400 font-medium">
+                      <span className="flex items-center gap-1 text-xs text-[#DCE9F5] font-medium">
                         <MinusCircle className="w-3.5 h-3.5" /> 0 Poin
                       </span>
                     ) : isCorrect ? (
-                      <span className="flex items-center gap-1 text-xs text-emerald-400 font-bold">
+                      <span className="flex items-center gap-1 text-xs text-emerald-300 font-bold">
                         <CheckCircle className="w-3.5 h-3.5" /> +4 Poin
                       </span>
                     ) : (
-                      <span className="flex items-center gap-1 text-xs text-rose-400 font-bold">
+                      <span className="flex items-center gap-1 text-xs text-rose-300 font-bold">
                         <XCircle className="w-3.5 h-3.5" /> -1 Poin
                       </span>
                     )}
 
                     {isOpen ? (
-                      <ChevronUp className="w-4 h-4 text-slate-400" />
+                      <ChevronUp className="w-4 h-4 text-[#F4E6CC]" />
                     ) : (
-                      <ChevronDown className="w-4 h-4 text-slate-400" />
+                      <ChevronDown className="w-4 h-4 text-[#F4E6CC]" />
                     )}
                   </div>
                 </div>
 
                 {/* Expanded Solution */}
                 {isOpen && (
-                  <div className="p-4 pt-2 border-t border-[#232533] bg-[#111217] space-y-3 text-sm">
-                    <div className="text-slate-200 leading-relaxed pb-3 border-b border-[#232533]">
-                      <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                  <div className="p-4 pt-3 border-t border-[#4E779F] bg-white text-[#1E3954] space-y-3 text-sm">
+                    <div className="text-[#1E3954] leading-relaxed pb-3 border-b border-[#EBF1F6]">
+                      <span className="text-xs font-extrabold text-[#2C4B6B] uppercase tracking-wider block mb-1">
                         Soal:
                       </span>
                       <MathRenderer content={q.text} />
                     </div>
 
                     <div>
-                      <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider block mb-1">
+                      <span className="text-xs font-extrabold text-[#2C4B6B] uppercase tracking-wider block mb-1">
                         Pembahasan & Penjelasan Resmi:
                       </span>
-                      <div className="text-slate-300 leading-relaxed bg-[#161822] border border-[#272938] p-3.5 rounded-lg text-xs lg:text-sm">
+                      <div className="text-[#1E3954] leading-relaxed bg-[#FAF3E3] border border-[#E49548]/50 p-3.5 rounded-xl text-xs lg:text-sm">
                         <MathRenderer content={q.explanation} />
                       </div>
                     </div>
@@ -395,9 +398,9 @@ export const ExamResultView: React.FC<ExamResultViewProps> = ({
       <div className="flex justify-center pt-4">
         <button
           onClick={onRetakeOrReturn}
-          className="px-6 py-3 rounded-xl bg-[#22242f] hover:bg-[#2c303f] border border-[#333748] text-xs font-semibold text-slate-200 transition-colors flex items-center gap-2 cursor-pointer"
+          className="px-6 py-3 rounded-2xl bg-[#E49548] hover:bg-[#CE7D30] text-xs font-extrabold text-[#1E3954] transition-colors flex items-center gap-2 cursor-pointer shadow-md"
         >
-          <RotateCcw className="w-4 h-4 text-slate-300" />
+          <RotateCcw className="w-4 h-4 text-[#1E3954]" />
           Kembali ke Beranda MMO
         </button>
       </div>
