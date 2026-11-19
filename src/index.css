@@ -59,7 +59,7 @@
 
 .katex {
   font-size: 1.1em;
-  color: #18181b;
+  color: inherit;
 }
 
 .katex .katex-mathml {
@@ -72,21 +72,21 @@
   overflow: hidden;
 }
 
-/* Force KaTeX text and all internal elements to white when inside dark steel-blue selected states or .katex-white */
-.text-white .katex,
-.text-white .katex *,
+/* Force KaTeX text and internal lines to white ONLY when explicitly marked with .katex-white */
 .katex-white,
 .katex-white .katex,
-.katex-white .katex * {
+.katex-white .katex *,
+.math-content.text-white .katex,
+.math-content.text-white .katex * {
   color: #ffffff !important;
   fill: #ffffff !important;
 }
 
-/* Ensure math fraction lines and square roots are white on dark */
-.text-white .katex .frac-line,
+/* Ensure math fraction lines and square roots are white inside .katex-white */
 .katex-white .katex .frac-line,
-.text-white .katex .sqrt-line,
-.katex-white .katex .sqrt-line {
+.katex-white .katex .sqrt-line,
+.math-content.text-white .katex .frac-line,
+.math-content.text-white .katex .sqrt-line {
   border-bottom-color: #ffffff !important;
   border-color: #ffffff !important;
 }
@@ -99,19 +99,107 @@
   user-select: none;
 }
 
-/* MMO Poster Framed Surfaces */
+/* MMO Poster Framed Surfaces & Gradient Orange Borders (matching reference poster) */
+:root {
+  --mmo-orange-grad: linear-gradient(135deg, #DF7A24 0%, #F7D3A2 28%, #E49548 52%, #FCE3BE 76%, #D97420 100%);
+  --mmo-orange-line-grad: linear-gradient(90deg, #DC7822 0%, #F0AC63 26%, #FBE2BE 50%, #F0AC63 74%, #DC7822 100%);
+}
+
+/* Full 4-sided rounded gradient borders for cards, buttons, and panels using #E49548 */
+:where([class^="border-[#E49548]"], [class*=" border-[#E49548]"]):not(.border-dashed):not(input):not(textarea):not(select):not(img):not(tr):not(thead):not(tbody):not([class^="border-t"]):not([class*=" border-t"]):not([class^="border-b"]):not([class*=" border-b"]):not([class^="border-l"]):not([class*=" border-l"]):not([class^="border-r"]):not([class*=" border-r"]) {
+  --mmo-bw: 1px;
+  --mmo-bo: 1;
+  border-color: transparent !important;
+}
+
+:where([class^="border-[#E49548]"], [class*=" border-[#E49548]"]):not(.fixed):not(.sticky):not(.absolute):not(.border-dashed):not(input):not(textarea):not(select):not(img):not(tr):not(thead):not(tbody):not([class^="border-t"]):not([class*=" border-t"]):not([class^="border-b"]):not([class*=" border-b"]):not([class^="border-l"]):not([class*=" border-l"]):not([class^="border-r"]):not([class*=" border-r"]) {
+  position: relative;
+}
+
+:where([class^="border-[#E49548]"], [class*=" border-[#E49548]"]):is([class^="border-2"], [class*=" border-2"]):not(.border-dashed):not(input):not(textarea):not(select):not(img):not(tr):not(thead):not(tbody):not([class^="border-t"]):not([class*=" border-t"]):not([class^="border-b"]):not([class*=" border-b"]):not([class^="border-l"]):not([class*=" border-l"]):not([class^="border-r"]):not([class*=" border-r"]) {
+  --mmo-bw: 2px;
+}
+
+:where([class*=" border-[#E49548]/80"], [class^="border-[#E49548]/80"]) { --mmo-bo: 0.94; }
+:where([class*=" border-[#E49548]/70"], [class^="border-[#E49548]/70"]) { --mmo-bo: 0.88; }
+:where([class*=" border-[#E49548]/60"], [class^="border-[#E49548]/60"]) { --mmo-bo: 0.80; }
+:where([class*=" border-[#E49548]/50"], [class^="border-[#E49548]/50"]) { --mmo-bo: 0.70; }
+:where([class*=" border-[#E49548]/40"], [class^="border-[#E49548]/40"]) { --mmo-bo: 0.58; }
+
+:where([class^="border-[#E49548]"], [class*=" border-[#E49548]"]).overflow-hidden:not(.border-dashed):not(input):not(textarea):not(select):not(img):not(tr):not(thead):not(tbody):not([class^="border-t"]):not([class*=" border-t"]):not([class^="border-b"]):not([class*=" border-b"]):not([class^="border-l"]):not([class*=" border-l"]):not([class^="border-r"]):not([class*=" border-r"]) {
+  background-clip: padding-box;
+}
+
+:where([class^="border-[#E49548]"], [class*=" border-[#E49548]"]):not(.border-dashed):not(input):not(textarea):not(select):not(img):not(tr):not(thead):not(tbody):not([class^="border-t"]):not([class*=" border-t"]):not([class^="border-b"]):not([class*=" border-b"]):not([class^="border-l"]):not([class*=" border-l"]):not([class^="border-r"]):not([class*=" border-r"])::before {
+  content: "";
+  position: absolute;
+  inset: calc(-1 * var(--mmo-bw, 1px));
+  border-radius: inherit;
+  padding: var(--mmo-bw, 1px);
+  background: var(--mmo-orange-grad);
+  opacity: var(--mmo-bo, 1);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 10;
+}
+
+:where([class^="border-[#E49548]"], [class*=" border-[#E49548]"]).overflow-hidden:not(.border-dashed):not(input):not(textarea):not(select):not(img):not(tr):not(thead):not(tbody):not([class^="border-t"]):not([class*=" border-t"]):not([class^="border-b"]):not([class*=" border-b"]):not([class^="border-l"]):not([class*=" border-l"]):not([class^="border-r"]):not([class*=" border-r"])::before {
+  inset: 0;
+}
+
+/* Single-sided horizontal/vertical orange gradient divider lines */
+:where([class^="border-[#E49548]"], [class*=" border-[#E49548]"]):is([class^="border-t"], [class*=" border-t"], [class^="border-b"], [class*=" border-b"], [class^="border-l"], [class*=" border-l"], [class^="border-r"], [class*=" border-r"]) {
+  border-image-source: var(--mmo-orange-line-grad);
+  border-image-slice: 1;
+}
+
 .mmo-card-curved {
+  position: relative;
   border-radius: 1.5rem;
-  border: 2px solid #E49548;
+  border: 2px solid transparent;
   background-color: rgba(44, 75, 107, 0.9);
   box-shadow: 0 12px 30px -6px rgba(20, 38, 58, 0.35);
 }
 
+.mmo-card-curved::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  padding: 2px;
+  background: var(--mmo-orange-grad);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 10;
+}
+
 .mmo-pill-dark {
+  position: relative;
   background-color: #2C4B6B;
   color: #ffffff;
-  border: 1px solid #E49548;
+  border: 1px solid transparent;
   border-radius: 9999px;
+}
+
+.mmo-pill-dark::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: var(--mmo-orange-grad);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 10;
 }
 
 .mmo-pill-light {

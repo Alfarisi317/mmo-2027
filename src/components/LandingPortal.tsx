@@ -348,79 +348,83 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
     <div className="max-w-5xl mx-auto px-4 lg:px-8 py-6 lg:py-10 space-y-8 text-white">
       {/* Systematic Stepper Indicator Bar matching poster numbered timeline */}
       <div className="bg-[#2C4B6B]/90 backdrop-blur-sm border-2 border-[#E49548] rounded-3xl p-3 sm:p-4 shadow-xl">
-        <div className="grid grid-cols-3 gap-2 text-center">
-          {/* Step 1 */}
-          <button
-            onClick={() => setCurrentStep(1)}
-            className={`flex flex-col sm:flex-row items-center justify-center gap-2 py-2.5 px-3 rounded-2xl transition-all duration-300 cursor-pointer ${
-              currentStep === 1
-                ? 'bg-[#F4E6CC] text-[#1E3954] font-extrabold shadow-md border-2 border-[#E49548] -translate-y-0.5'
-                : 'bg-[#243E59] text-white hover:border-[#E49548] hover:shadow-xs border border-[#4E779F]'
-            }`}
-          >
-            <span
-              className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono font-extrabold shrink-0 transition-colors ${
-                currentStep === 1 ? 'bg-[#E49548] text-[#1E3954]' : 'bg-[#4E779F] text-white'
+        <div className="relative">
+          {/* Poster-style gradient orange timeline line connecting steps 1 — 2 — 3 */}
+          <div className="hidden sm:block absolute left-10 right-10 top-1/2 -translate-y-1/2 h-[2px] bg-gradient-to-r from-[#DC7822] via-[#FBE2BE] to-[#DC7822] opacity-85 pointer-events-none" />
+          <div className="relative z-10 grid grid-cols-3 gap-2 text-center">
+            {/* Step 1 */}
+            <button
+              onClick={() => setCurrentStep(1)}
+              className={`flex flex-col sm:flex-row items-center justify-center gap-2 py-2.5 px-3 rounded-2xl transition-all duration-300 cursor-pointer ${
+                currentStep === 1
+                  ? 'bg-[#F4E6CC] text-[#1E3954] font-extrabold shadow-md border-2 border-[#E49548] -translate-y-0.5'
+                  : 'bg-[#243E59] text-white hover:border-[#E49548] hover:shadow-xs border border-[#4E779F]'
               }`}
             >
-              1
-            </span>
-            <span className="text-xs sm:text-sm font-bold truncate">
-              Profil & Tema MMO
-            </span>
-          </button>
+              <span
+                className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono font-extrabold shrink-0 transition-colors ${
+                  currentStep === 1 ? 'bg-[#E49548] text-[#1E3954]' : 'bg-[#4E779F] text-white'
+                }`}
+              >
+                1
+              </span>
+              <span className="text-xs sm:text-sm font-bold truncate">
+                Profil & Tema MMO
+              </span>
+            </button>
 
-          {/* Step 2 */}
-          <button
-            onClick={() => {
-              if (currentStep >= 2 || hasAgreedToRules) setCurrentStep(2);
-            }}
-            className={`flex flex-col sm:flex-row items-center justify-center gap-2 py-2.5 px-3 rounded-2xl transition-all duration-300 ${
-              currentStep === 2
-                ? 'bg-[#F4E6CC] text-[#1E3954] font-extrabold shadow-md border-2 border-[#E49548] -translate-y-0.5'
-                : currentStep > 2
-                ? 'bg-[#243E59] text-white border border-[#E49548]/70 hover:border-[#E49548] cursor-pointer'
-                : 'bg-[#243E59]/50 text-[#B8CCE0]/60 border border-[#4E779F]/40 cursor-not-allowed'
-            }`}
-          >
-            <span
-              className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono font-extrabold shrink-0 transition-colors ${
+            {/* Step 2 */}
+            <button
+              onClick={() => {
+                if (currentStep >= 2 || hasAgreedToRules) setCurrentStep(2);
+              }}
+              className={`flex flex-col sm:flex-row items-center justify-center gap-2 py-2.5 px-3 rounded-2xl transition-all duration-300 ${
                 currentStep === 2
-                  ? 'bg-[#E49548] text-[#1E3954]'
+                  ? 'bg-[#F4E6CC] text-[#1E3954] font-extrabold shadow-md border-2 border-[#E49548] -translate-y-0.5'
                   : currentStep > 2
-                  ? 'bg-emerald-400 text-[#1E3954]'
-                  : 'bg-[#3B5F84]/70 text-[#B8CCE0]/70'
+                  ? 'bg-[#243E59] text-white border border-[#E49548]/70 hover:border-[#E49548] cursor-pointer'
+                  : 'bg-[#243E59]/90 text-[#B8CCE0]/60 border border-[#4E779F]/40 cursor-not-allowed'
               }`}
             >
-              {currentStep > 2 ? '✓' : '2'}
-            </span>
-            <span className="text-xs sm:text-sm font-bold truncate">
-              Pedoman & Aturan
-            </span>
-          </button>
+              <span
+                className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono font-extrabold shrink-0 transition-colors ${
+                  currentStep === 2
+                    ? 'bg-[#E49548] text-[#1E3954]'
+                    : currentStep > 2
+                    ? 'bg-emerald-400 text-[#1E3954]'
+                    : 'bg-[#3B5F84]/70 text-[#B8CCE0]/70'
+                }`}
+              >
+                {currentStep > 2 ? '✓' : '2'}
+              </span>
+              <span className="text-xs sm:text-sm font-bold truncate">
+                Pedoman & Aturan
+              </span>
+            </button>
 
-          {/* Step 3 */}
-          <button
-            onClick={() => {
-              if (hasAgreedToRules) setCurrentStep(3);
-            }}
-            className={`flex flex-col sm:flex-row items-center justify-center gap-2 py-2.5 px-3 rounded-2xl transition-all duration-300 ${
-              currentStep === 3
-                ? 'bg-[#F4E6CC] text-[#1E3954] font-extrabold shadow-md border-2 border-[#E49548] -translate-y-0.5'
-                : 'bg-[#243E59]/50 text-[#B8CCE0]/60 border border-[#4E779F]/40 cursor-not-allowed'
-            }`}
-          >
-            <span
-              className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono font-extrabold shrink-0 transition-colors ${
-                currentStep === 3 ? 'bg-[#E49548] text-[#1E3954]' : 'bg-[#3B5F84]/70 text-[#B8CCE0]/70'
+            {/* Step 3 */}
+            <button
+              onClick={() => {
+                if (hasAgreedToRules) setCurrentStep(3);
+              }}
+              className={`flex flex-col sm:flex-row items-center justify-center gap-2 py-2.5 px-3 rounded-2xl transition-all duration-300 ${
+                currentStep === 3
+                  ? 'bg-[#F4E6CC] text-[#1E3954] font-extrabold shadow-md border-2 border-[#E49548] -translate-y-0.5'
+                  : 'bg-[#243E59]/90 text-[#B8CCE0]/60 border border-[#4E779F]/40 cursor-not-allowed'
               }`}
             >
-              3
-            </span>
-            <span className="text-xs sm:text-sm font-bold truncate">
-              Masuk Akun Ujian
-            </span>
-          </button>
+              <span
+                className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono font-extrabold shrink-0 transition-colors ${
+                  currentStep === 3 ? 'bg-[#E49548] text-[#1E3954]' : 'bg-[#3B5F84]/70 text-[#B8CCE0]/70'
+                }`}
+              >
+                3
+              </span>
+              <span className="text-xs sm:text-sm font-bold truncate">
+                Masuk Akun Ujian
+              </span>
+            </button>
+          </div>
         </div>
       </div>
 
