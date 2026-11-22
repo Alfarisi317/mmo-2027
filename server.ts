@@ -30,6 +30,28 @@ const resolvedDirname = (() => {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Ensure Express 4 async route rejections flow to the JSON error handler instead of crashing the serverless process
+for (const method of ['get', 'post', 'put', 'delete'] as const) {
+  const orig = app[method].bind(app);
+  (app as any)[method] = (routePath: any, ...handlers: any[]) => {
+    const wrapped = handlers.map((h) =>
+      typeof h === 'function' && h.length < 4
+        ? (req: express.Request, res: express.Response, next: express.NextFunction) => {
+            try {
+              const result = h(req, res, next);
+              if (result && typeof result.catch === 'function') {
+                result.catch(next);
+              }
+            } catch (err) {
+              next(err);
+            }
+          }
+        : h
+    );
+    return orig(routePath, ...wrapped);
+  };
+}
+
 // Lazy GoogleGenAI initialization so missing GEMINI_API_KEY never crashes unrelated API routes on Vercel
 let cachedAiClient: GoogleGenAI | null = null;
 function getAiClient(): GoogleGenAI | null {
@@ -62,7 +84,7 @@ app.use('/api', (_req, res, next) => {
 // Optional Cloud KV / Upstash Redis REST Persistence (solves cross-device HP <-> Laptop sync across Vercel serverless instances)
 const KV_REST_URL = (process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || '').trim().replace(/\/+$/, '');
 const KV_REST_TOKEN = (process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '').trim();
-const hasCloudKv = Boolean(KV_REST_URL && KV_REST_TOKEN);
+const hasCloudKv = Boolean((KV_REST_URL.startsWith('https://') || KV_REST_URL.startsWith('http://')) && KV_REST_TOKEN);
 
 async function kvGetJson<T>(key: string): Promise<T | null> {
   if (!hasCloudKv) return null;
@@ -1954,7 +1976,8 @@ async function startServer() {
   const isProduction = process.env.NODE_ENV === 'production';
 
   if (!isProduction) {
-    const { createServer: createViteServer } = await import('vite');
+    const vitePkgName = ['vi', 'te'].join('');
+    const { createServer: createViteServer } = await import(vitePkgName);
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
