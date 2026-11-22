@@ -1,4 +1,4 @@
-import { Question } from '../types';
+import { Question } from '../types/index.js';
 
 export const INITIAL_QUESTIONS_DATA: Question[] = [
   // ==========================================

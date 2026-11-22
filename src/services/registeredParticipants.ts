@@ -1,6 +1,27 @@
 import * as XLSX from 'xlsx';
 import { RegisteredParticipant, OlympiadCategory, CompetitionStage } from '../types';
 
+const EXAM_GATE_LOCAL_KEY = 'mmo_exam_gate_cache';
+
+async function safeParseJson<T = any>(res: Response): Promise<T & { success?: boolean; error?: string; message?: string }> {
+  const text = await res.text();
+  if (!text) {
+    return {
+      success: res.ok,
+      error: res.ok ? undefined : `Server mengembalikan respons kosong (HTTP ${res.status}).`,
+    } as T & { success?: boolean; error?: string; message?: string };
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    const snippet = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140);
+    return {
+      success: false,
+      error: `Respons server bukan JSON valid (HTTP ${res.status}): ${snippet || 'Terjadi gangguan pada server API.'}`,
+    } as T & { success?: boolean; error?: string; message?: string };
+  }
+}
+
 const STORAGE_KEY = 'mmo_registered_participants_v1';
 const SHEETS_URL_KEY = 'mmo_google_sheets_url_v1';
 const LAST_SYNC_KEY = 'mmo_last_sync_timestamp_v1';
@@ -177,9 +198,9 @@ export async function fetchRegisteredParticipantsFromServer(): Promise<{
   lastSyncText: string;
 }> {
   try {
-    const res = await fetch('/api/registered-participants');
+    const res = await fetch('/api/registered-participants', { cache: 'no-store' });
     if (res.ok) {
-      const json = await res.json();
+      const json = await safeParseJson(res);
       if (json.success && json.data) {
         const { participants, isDemoActive: demoActive, lastSyncText: syncText } = json.data;
         if (Array.isArray(participants)) {
@@ -253,7 +274,7 @@ export async function changeParticipantPasswordOnline(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ participantId, oldPassword, newPassword }),
     });
-    const data = await res.json();
+    const data = await safeParseJson(res);
     if (res.ok && data.success) {
       // Synchronize with local storage on this device
       const list = getRegisteredParticipants();
@@ -272,8 +293,6 @@ export async function changeParticipantPasswordOnline(
   }
 }
 
-const EXAM_GATE_LOCAL_KEY = 'mmo_exam_gate_cache';
-
 export interface ExamGateMatrix {
   'SMP_Penyisihan': boolean;
   'SMP_Semifinal': boolean;
@@ -287,6 +306,8 @@ export interface ExamGateStatus {
   passcode?: string;
   gateMatrix?: ExamGateMatrix;
   source?: 'server' | 'cache' | 'local_override';
+  storageMode?: 'cloud-kv' | 'memory-tmp';
+  runtime?: 'vercel-serverless' | 'node-server';
 }
 
 /**
@@ -297,13 +318,13 @@ export function isGateOpenForParticipant(
   category?: OlympiadCategory | null,
   stage?: CompetitionStage | null
 ): boolean {
-  if (status.isOpen) return true; // Master open allows all
-  if (!category || !stage) return status.isOpen;
-  const key = `${category}_${stage}` as keyof ExamGateMatrix;
-  if (status.gateMatrix && typeof status.gateMatrix[key] === 'boolean') {
-    return status.gateMatrix[key];
+  if (category && stage) {
+    const key = `${category}_${stage}` as keyof ExamGateMatrix;
+    if (status.gateMatrix && typeof status.gateMatrix[key] === 'boolean') {
+      return status.gateMatrix[key];
+    }
   }
-  return status.isOpen;
+  return Boolean(status.isOpen);
 }
 
 /**
@@ -311,11 +332,11 @@ export function isGateOpenForParticipant(
  * Queries Vercel serverless /api/exam-gate with resilient localStorage fallback
  */
 export async function getExamGateStatusOnline(): Promise<ExamGateStatus> {
-  // 1. Try server/API endpoint
+  // 1. Try server/API endpoint with no-store so HP polling never receives stale cache
   try {
-    const res = await fetch('/api/exam-gate');
+    const res = await fetch('/api/exam-gate', { cache: 'no-store' });
     if (res.ok) {
-      const json = await res.json();
+      const json = await safeParseJson(res);
       if (json && json.success && json.data) {
         const defaultMatrix: ExamGateMatrix = {
           'SMP_Penyisihan': false,
@@ -329,8 +350,10 @@ export async function getExamGateStatusOnline(): Promise<ExamGateStatus> {
           passcode: json.data.passcode || 'MMO2027',
           gateMatrix: json.data.gateMatrix ? { ...defaultMatrix, ...json.data.gateMatrix } : defaultMatrix,
           source: 'server',
+          storageMode: json.data.storageMode,
+          runtime: json.data.runtime,
         };
-        // Persist to local cache for fast offline / cold-start fallback
+        // Persist to local cache for fast offline fallback
         try {
           localStorage.setItem(EXAM_GATE_LOCAL_KEY, JSON.stringify(status));
         } catch {
@@ -343,7 +366,7 @@ export async function getExamGateStatusOnline(): Promise<ExamGateStatus> {
     console.warn('Gagal membaca status gerbang ujian dari server, mencoba cache lokal:', err);
   }
 
-  // 2. Resilient local storage fallback (crucial for Vercel / offline / cold starts)
+  // 2. Resilient local storage fallback
   try {
     const cached = localStorage.getItem(EXAM_GATE_LOCAL_KEY);
     if (cached) {
@@ -359,6 +382,8 @@ export async function getExamGateStatusOnline(): Promise<ExamGateStatus> {
           'SMA_Semifinal': Boolean(parsed.isOpen),
         },
         source: 'cache',
+        storageMode: parsed.storageMode,
+        runtime: parsed.runtime,
       };
     }
   } catch {
@@ -398,6 +423,8 @@ export async function setExamGateStatusOnline(
   passcode: string;
   gateMatrix: ExamGateMatrix;
   source: 'server' | 'cache';
+  storageMode?: 'cloud-kv' | 'memory-tmp';
+  runtime?: 'vercel-serverless' | 'node-server';
 }> {
   const timestamp = isOpen ? new Date().toISOString() : null;
 
@@ -468,7 +495,7 @@ export async function setExamGateStatusOnline(
     });
 
     if (res.ok) {
-      const json = await res.json();
+      const json = await safeParseJson(res);
       if (json && json.success && json.data) {
         const finalIsOpen = Boolean(json.data.isOpen);
         const finalPasscode = json.data.passcode || passcode;
@@ -482,6 +509,8 @@ export async function setExamGateStatusOnline(
               passcode: finalPasscode,
               gateMatrix: finalMatrix,
               source: 'server',
+              storageMode: json.data.storageMode,
+              runtime: json.data.runtime,
             })
           );
         } catch {
@@ -493,6 +522,8 @@ export async function setExamGateStatusOnline(
           passcode: finalPasscode,
           gateMatrix: finalMatrix,
           source: 'server',
+          storageMode: json.data.storageMode,
+          runtime: json.data.runtime,
         };
       }
     }
@@ -500,7 +531,7 @@ export async function setExamGateStatusOnline(
     console.warn('Gagal sinkronisasi status gerbang ujian ke server, menggunakan cache lokal:', err);
   }
 
-  // Fallback: If server is unreachable on Vercel, local cache still successfully updated!
+  // Fallback: If server is unreachable, local cache still updated
   return {
     success: true,
     isOpen: calculatedIsOpen,
@@ -529,7 +560,7 @@ export async function verifyEmergencyGatePasscodeOnline(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ passcode: cleanCode }),
     });
-    const json = await res.json();
+    const json = await safeParseJson(res);
     if (res.ok && json.success) {
       // Mark local gate as open as well
       localStorage.setItem(
@@ -543,8 +574,8 @@ export async function verifyEmergencyGatePasscodeOnline(
       );
       window.dispatchEvent(new Event('mmo_exam_gate_change'));
       return { success: true, message: json.message || 'Kode akses darurat valid! Memulai ujian...' };
-    } else if (json && json.message) {
-      return { success: false, message: json.message };
+    } else if (json && (json.message || json.error)) {
+      return { success: false, message: json.message || json.error || 'Kode akses darurat tidak cocok.' };
     }
   } catch {
     // Server unreachable: evaluate against local cache & standard default
@@ -616,7 +647,7 @@ export async function authenticateParticipantOnline(
         stage: stage || undefined,
       }),
     });
-    const data = await res.json();
+    const data = await safeParseJson(res);
     if (res.ok && data.success && data.participant) {
       return {
         success: true,
@@ -637,11 +668,11 @@ export async function authenticateParticipantOnline(
     const cached = localStorage.getItem(EXAM_GATE_LOCAL_KEY);
     if (cached) {
       const parsed = JSON.parse(cached);
-      if (parsed.isOpen) {
-        localGateOpen = true;
-      } else if (category && stage && parsed.gateMatrix) {
+      if (category && stage && parsed.gateMatrix) {
         const key = `${category}_${stage}` as keyof ExamGateMatrix;
         localGateOpen = Boolean(parsed.gateMatrix[key]);
+      } else if (parsed.isOpen) {
+        localGateOpen = true;
       }
     }
   } catch {
@@ -1047,7 +1078,7 @@ export async function syncParticipantsFromSheets(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: rawUrl }),
       });
-      const data = await res.json();
+      const data = await safeParseJson(res);
       if (res.ok && data && data.csvText) {
         csvText = data.csvText;
       } else if (data && data.error) {

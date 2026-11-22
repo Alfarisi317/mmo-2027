@@ -7,13 +7,53 @@ import {
 } from '../types';
 import { StructuredBankSoalItem, WordParseResult } from '../utils/wordEquationParser';
 
+async function safeParseJson<T = any>(res: Response): Promise<T & { success?: boolean; error?: string }> {
+  const text = await res.text();
+  if (!text) {
+    return {
+      success: res.ok,
+      error: res.ok ? undefined : `Server mengembalikan respons kosong (HTTP ${res.status}).`,
+    } as T & { success?: boolean; error?: string };
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    const snippet = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140);
+    return {
+      success: false,
+      error: `Respons server bukan JSON valid (HTTP ${res.status}): ${snippet || 'Terjadi gangguan pada server API.'}`,
+    } as T & { success?: boolean; error?: string };
+  }
+}
+
 export const ApiService = {
+  async getServerHealth(): Promise<{
+    success: boolean;
+    runtime?: 'vercel-serverless' | 'node-server';
+    storage?: 'cloud-kv' | 'memory-tmp';
+  }> {
+    try {
+      const res = await fetch('/api/health', { cache: 'no-store' });
+      const json = await safeParseJson(res);
+      if (res.ok && json.success) {
+        return {
+          success: true,
+          runtime: json.runtime,
+          storage: json.storage,
+        };
+      }
+    } catch {
+      // ignore
+    }
+    return { success: false };
+  },
+
   // --- Participants ---
   async getParticipants(): Promise<LiveParticipantMonitoring[]> {
     try {
-      const res = await fetch('/api/participants');
+      const res = await fetch('/api/participants', { cache: 'no-store' });
       if (res.ok) {
-        const json = await res.json();
+        const json = await safeParseJson(res);
         if (json.success && Array.isArray(json.data)) {
           return json.data;
         }
@@ -42,7 +82,7 @@ export const ApiService = {
         body: JSON.stringify(participant),
       });
       if (res.ok) {
-        const json = await res.json();
+        const json = await safeParseJson(res);
         if (json.success && Array.isArray(json.data)) {
           return json.data;
         }
@@ -118,9 +158,9 @@ export const ApiService = {
   // --- Questions (Full Bank Management & Word Importer) ---
   async getQuestions(): Promise<Question[] | null> {
     try {
-      const res = await fetch('/api/questions');
+      const res = await fetch('/api/questions', { cache: 'no-store' });
       if (res.ok) {
-        const json = await res.json();
+        const json = await safeParseJson(res);
         if (json.success && Array.isArray(json.data)) {
           return json.data;
         }
@@ -145,7 +185,7 @@ export const ApiService = {
         method: 'POST',
         body: formData,
       });
-      const json = await res.json();
+      const json = await safeParseJson(res);
       if (!res.ok || !json.success) {
         return { success: false, error: json.error || 'Gagal memproses berkas .docx.' };
       }
@@ -170,7 +210,7 @@ export const ApiService = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rawText, category, stage }),
       });
-      const json = await res.json();
+      const json = await safeParseJson(res);
       if (!res.ok || !json.success) {
         return {
           success: false,
@@ -204,7 +244,7 @@ export const ApiService = {
         method: 'POST',
         body: formData,
       });
-      const json = await res.json();
+      const json = await safeParseJson(res);
       if (!res.ok || !json.success) {
         return {
           success: false,
@@ -231,7 +271,7 @@ export const ApiService = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url, category, stage }),
       });
-      const json = await res.json();
+      const json = await safeParseJson(res);
       if (!res.ok || !json.success) {
         return {
           success: false,
@@ -259,7 +299,7 @@ export const ApiService = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ questions, mode, category, stage }),
       });
-      const json = await res.json();
+      const json = await safeParseJson(res);
       if (!res.ok || !json.success) {
         return { success: false, error: json.error || 'Gagal menyimpan daftar soal.' };
       }
@@ -276,7 +316,7 @@ export const ApiService = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(question),
       });
-      const json = await res.json();
+      const json = await safeParseJson(res);
       if (!res.ok || !json.success) {
         return { success: false, error: json.error || 'Gagal menambahkan soal.' };
       }
@@ -293,7 +333,7 @@ export const ApiService = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(question),
       });
-      const json = await res.json();
+      const json = await safeParseJson(res);
       if (!res.ok || !json.success) {
         return { success: false, error: json.error || 'Gagal memperbarui soal.' };
       }
@@ -308,7 +348,7 @@ export const ApiService = {
       const res = await fetch(`/api/questions/${encodeURIComponent(id)}`, {
         method: 'DELETE',
       });
-      const json = await res.json();
+      const json = await safeParseJson(res);
       if (!res.ok || !json.success) {
         return { success: false, error: json.error || 'Gagal menghapus soal.' };
       }
@@ -321,7 +361,7 @@ export const ApiService = {
   async clearAllQuestions(): Promise<{ success: boolean; data?: Question[]; error?: string }> {
     try {
       const res = await fetch('/api/questions/clear-all', { method: 'POST' });
-      const json = await res.json();
+      const json = await safeParseJson(res);
       if (!res.ok || !json.success) {
         return { success: false, error: json.error || 'Gagal mengosongkan Bank Soal.' };
       }
@@ -334,7 +374,7 @@ export const ApiService = {
   async resetQuestions(): Promise<{ success: boolean; data?: Question[]; error?: string }> {
     try {
       const res = await fetch('/api/questions/reset', { method: 'POST' });
-      const json = await res.json();
+      const json = await safeParseJson(res);
       if (!res.ok || !json.success) {
         return { success: false, error: json.error || 'Gagal mereset Bank Soal.' };
       }
@@ -359,9 +399,9 @@ export const ApiService = {
 
   async getBroadcast(): Promise<string | null> {
     try {
-      const res = await fetch('/api/broadcast');
+      const res = await fetch('/api/broadcast', { cache: 'no-store' });
       if (res.ok) {
-        const json = await res.json();
+        const json = await safeParseJson(res);
         if (json.success && json.data) {
           return json.data.message;
         }
@@ -386,9 +426,9 @@ export const ApiService = {
 
   async getWarning(participantId: string): Promise<string | null> {
     try {
-      const res = await fetch(`/api/warnings/${participantId}`);
+      const res = await fetch(`/api/warnings/${participantId}`, { cache: 'no-store' });
       if (res.ok) {
-        const json = await res.json();
+        const json = await safeParseJson(res);
         if (json.success && json.data) {
           return json.data.message;
         }
@@ -401,9 +441,9 @@ export const ApiService = {
 
   async getNetworkInfo(): Promise<{ localIps: string[]; port: number } | null> {
     try {
-      const res = await fetch('/api/network-info');
+      const res = await fetch('/api/network-info', { cache: 'no-store' });
       if (res.ok) {
-        const json = await res.json();
+        const json = await safeParseJson(res);
         if (json.success) {
           return { localIps: json.localIps || [], port: json.port || 3000 };
         }
@@ -422,9 +462,9 @@ export const ApiService = {
     zoomInstructions: string;
   } | null> {
     try {
-      const res = await fetch('/api/proctor-config');
+      const res = await fetch('/api/proctor-config', { cache: 'no-store' });
       if (res.ok) {
-        const json = await res.json();
+        const json = await safeParseJson(res);
         if (json.success && json.data) {
           return json.data;
         }
@@ -467,8 +507,12 @@ export const ApiService = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
-      const json = await res.json();
-      return json;
+      const json = await safeParseJson(res);
+      return {
+        success: Boolean(res.ok && json.success),
+        report: json.report,
+        error: json.error,
+      };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Gagal menghubungi server untuk laporan AI.' };
     }
@@ -490,8 +534,14 @@ export const ApiService = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const json = await res.json();
-      return json;
+      const json = await safeParseJson(res);
+      if (!res.ok || !json.success) {
+        return {
+          success: false,
+          error: json.error || `Gagal mengirim pesan dan saran (HTTP ${res.status}).`,
+        };
+      }
+      return { success: true, data: json.data };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Gagal mengirim pesan dan saran ke server.' };
     }
@@ -501,15 +551,19 @@ export const ApiService = {
     success: boolean;
     data: SiteFeedbackEntry[];
     webhookUrl: string;
+    storageMode?: 'cloud-kv' | 'memory-tmp';
+    runtime?: 'vercel-serverless' | 'node-server';
   }> {
     try {
-      const res = await fetch('/api/feedback');
-      if (res.ok) {
-        const json = await res.json();
+      const res = await fetch('/api/feedback', { cache: 'no-store' });
+      const json = await safeParseJson(res);
+      if (res.ok && json.success) {
         return {
-          success: Boolean(json.success),
+          success: true,
           data: Array.isArray(json.data) ? json.data : [],
           webhookUrl: typeof json.webhookUrl === 'string' ? json.webhookUrl : '',
+          storageMode: json.storageMode,
+          runtime: json.runtime,
         };
       }
     } catch {
@@ -551,8 +605,12 @@ export const ApiService = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ webhookUrl }),
       });
-      const json = await res.json();
-      return json;
+      const json = await safeParseJson(res);
+      return {
+        success: Boolean(res.ok && json.success),
+        webhookUrl: json.webhookUrl,
+        error: json.error,
+      };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Gagal menyimpan URL Webhook.' };
     }
@@ -569,8 +627,12 @@ export const ApiService = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ webhookUrl }),
       });
-      const json = await res.json();
-      return json;
+      const json = await safeParseJson(res);
+      return {
+        success: Boolean(res.ok && json.success),
+        message: json.message,
+        error: json.error,
+      };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Gagal melakukan tes webhook Google Sheets.' };
     }
@@ -588,8 +650,15 @@ export const ApiService = {
       const res = await fetch('/api/feedback/sync-all', {
         method: 'POST',
       });
-      const json = await res.json();
-      return json;
+      const json = await safeParseJson(res);
+      return {
+        success: Boolean(res.ok && json.success),
+        syncedCount: json.syncedCount,
+        failedCount: json.failedCount,
+        lastError: json.lastError,
+        data: json.data,
+        error: json.error,
+      };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Gagal menyinkronkan pesan ke Google Sheets.' };
     }
@@ -604,8 +673,12 @@ export const ApiService = {
       const res = await fetch(`/api/feedback/${encodeURIComponent(id)}/sync`, {
         method: 'POST',
       });
-      const json = await res.json();
-      return json;
+      const json = await safeParseJson(res);
+      return {
+        success: Boolean(res.ok && json.success),
+        data: json.data,
+        error: json.error,
+      };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Gagal menyinkronkan baris ke Google Sheets.' };
     }

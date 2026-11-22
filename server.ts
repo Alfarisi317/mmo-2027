@@ -15,24 +15,103 @@ import {
 import { parseSpreadsheetBufferToDrafts } from './src/utils/questionSpreadsheet.js';
 import type { SiteFeedbackEntry } from './src/types/index.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const resolvedDirname = (() => {
+  try {
+    if (typeof __dirname !== 'undefined') return __dirname;
+    if (typeof import.meta !== 'undefined' && import.meta.url) {
+      return path.dirname(fileURLToPath(import.meta.url));
+    }
+  } catch {
+    // ignore
+  }
+  return process.cwd();
+})();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Initialize Google GenAI for selective high-strike incident reports
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    },
-  },
-});
+// Lazy GoogleGenAI initialization so missing GEMINI_API_KEY never crashes unrelated API routes on Vercel
+let cachedAiClient: GoogleGenAI | null = null;
+function getAiClient(): GoogleGenAI | null {
+  const key = (process.env.GEMINI_API_KEY || '').trim();
+  if (!key) return null;
+  if (!cachedAiClient) {
+    cachedAiClient = new GoogleGenAI({
+      apiKey: key,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    });
+  }
+  return cachedAiClient;
+}
 
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+
+// Prevent Vercel CDN & mobile browsers from caching dynamic /api/* responses
+app.use('/api', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
+
+// Optional Cloud KV / Upstash Redis REST Persistence (solves cross-device HP <-> Laptop sync across Vercel serverless instances)
+const KV_REST_URL = (process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || '').trim().replace(/\/+$/, '');
+const KV_REST_TOKEN = (process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '').trim();
+const hasCloudKv = Boolean(KV_REST_URL && KV_REST_TOKEN);
+
+async function kvGetJson<T>(key: string): Promise<T | null> {
+  if (!hasCloudKv) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 3500);
+  try {
+    const res = await fetch(KV_REST_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${KV_REST_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(['GET', key]),
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    const json: any = await res.json();
+    if (json && json.result !== undefined && json.result !== null) {
+      return typeof json.result === 'string' ? JSON.parse(json.result) : json.result;
+    }
+    return null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function kvSetJson(key: string, value: unknown): Promise<boolean> {
+  if (!hasCloudKv) return false;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 3500);
+  try {
+    const res = await fetch(KV_REST_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${KV_REST_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(['SET', key, JSON.stringify(value)]),
+      signal: controller.signal,
+    });
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 const uploadDocx = multer({
   storage: multer.memoryStorage(),
@@ -42,6 +121,16 @@ const uploadDocx = multer({
 const uploadMedia = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 },
+});
+
+// Server runtime & storage health endpoint
+app.get('/api/health', (_req, res) => {
+  res.json({
+    success: true,
+    runtime: process.env.VERCEL ? 'vercel-serverless' : 'node-server',
+    storage: hasCloudKv ? 'cloud-kv' : 'memory-tmp',
+    timestamp: Date.now(),
+  });
 });
 
 // Network information for mobile device connection (LAN IP / Wi-Fi)
@@ -62,13 +151,48 @@ app.get('/api/network-info', (_req, res) => {
   });
 });
 
-// In-memory data store for multi-device synchronization (Phone <-> Laptop)
-// Starts EMPTY so no random mock participants appear unless actually submitted or tested
+// In-memory + /tmp + optional Cloud KV data stores for multi-device synchronization (Phone <-> Laptop)
 let participants: any[] = [];
+const PARTICIPANTS_STORE_FILE = path.join(os.tmpdir(), 'mmo_live_participants.json');
+
+async function loadParticipantsState(): Promise<void> {
+  const remote = await kvGetJson<{ participants?: any[] }>('mmo:live_participants');
+  if (remote && Array.isArray(remote.participants)) {
+    participants = remote.participants;
+    return;
+  }
+  try {
+    if (fs.existsSync(PARTICIPANTS_STORE_FILE)) {
+      const raw = fs.readFileSync(PARTICIPANTS_STORE_FILE, 'utf-8');
+      const data = JSON.parse(raw);
+      if (Array.isArray(data.participants)) {
+        participants = data.participants;
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
+
+async function saveParticipantsState(): Promise<void> {
+  const payload = { participants, updatedAt: Date.now() };
+  try {
+    fs.writeFileSync(PARTICIPANTS_STORE_FILE, JSON.stringify(payload), 'utf-8');
+  } catch {
+    // ignore
+  }
+  await kvSetJson('mmo:live_participants', payload);
+}
+
 let questions: any[] = [...INITIAL_QUESTIONS_DATA];
 const QUESTIONS_STORE_FILE = path.join(os.tmpdir(), 'mmo_questions_bank.json');
 
-function loadQuestionsState(): void {
+async function loadQuestionsState(): Promise<void> {
+  const remote = await kvGetJson<{ questions?: any[] }>('mmo:questions_bank');
+  if (remote && Array.isArray(remote.questions)) {
+    questions = remote.questions;
+    return;
+  }
   try {
     if (fs.existsSync(QUESTIONS_STORE_FILE)) {
       const raw = fs.readFileSync(QUESTIONS_STORE_FILE, 'utf-8');
@@ -82,32 +206,48 @@ function loadQuestionsState(): void {
   }
 }
 
-function saveQuestionsState(): void {
+async function saveQuestionsState(): Promise<void> {
+  const payload = { questions, updatedAt: Date.now() };
   try {
-    fs.writeFileSync(
-      QUESTIONS_STORE_FILE,
-      JSON.stringify({
-        questions,
-        updatedAt: Date.now(),
-      }),
-      'utf-8'
-    );
+    fs.writeFileSync(QUESTIONS_STORE_FILE, JSON.stringify(payload), 'utf-8');
   } catch {
     // Ignore read-only filesystem errors
   }
+  await kvSetJson('mmo:questions_bank', payload);
 }
-
-loadQuestionsState();
 
 let currentBroadcast: { message: string; timestamp: number } | null = null;
 const participantWarnings: Record<string, { message: string; timestamp: number }> = {};
 
+async function loadCommsState(): Promise<void> {
+  const remote = await kvGetJson<{
+    broadcast?: { message: string; timestamp: number } | null;
+    warnings?: Record<string, { message: string; timestamp: number }>;
+  }>('mmo:comms');
+  if (remote) {
+    if (remote.broadcast !== undefined) currentBroadcast = remote.broadcast;
+    if (remote.warnings && typeof remote.warnings === 'object') {
+      Object.assign(participantWarnings, remote.warnings);
+    }
+  }
+}
+
+async function saveCommsState(): Promise<void> {
+  await kvSetJson('mmo:comms', {
+    broadcast: currentBroadcast,
+    warnings: participantWarnings,
+    updatedAt: Date.now(),
+  });
+}
+
 // API Routes
-app.get('/api/participants', (req, res) => {
+app.get('/api/participants', async (_req, res) => {
+  await loadParticipantsState();
   res.json({ success: true, data: participants });
 });
 
-app.post('/api/participants', (req, res) => {
+app.post('/api/participants', async (req, res) => {
+  await loadParticipantsState();
   const newParticipant = req.body;
   if (!newParticipant || !newParticipant.id) {
     return res.status(400).json({ success: false, error: 'Invalid participant data' });
@@ -127,10 +267,12 @@ app.post('/api/participants', (req, res) => {
     });
   }
 
+  await saveParticipantsState();
   res.json({ success: true, data: participants });
 });
 
-app.put('/api/participants/:id', (req, res) => {
+app.put('/api/participants/:id', async (req, res) => {
+  await loadParticipantsState();
   const { id } = req.params;
   const updateData = req.body;
 
@@ -141,6 +283,7 @@ app.put('/api/participants/:id', (req, res) => {
       ...updateData,
       lastActive: updateData.lastActive || 'Baru saja',
     };
+    await saveParticipantsState();
     res.json({ success: true, data: participants[index] });
   } else {
     // If not found, add it
@@ -149,19 +292,24 @@ app.put('/api/participants/:id', (req, res) => {
       ...updateData,
       lastActive: 'Baru saja',
     });
+    await saveParticipantsState();
     res.json({ success: true, data: participants[0] });
   }
 });
 
-app.delete('/api/participants/:id', (req, res) => {
+app.delete('/api/participants/:id', async (req, res) => {
+  await loadParticipantsState();
   const { id } = req.params;
   participants = participants.filter((p) => p.id !== id);
   delete participantWarnings[id];
+  await saveParticipantsState();
+  await saveCommsState();
   res.json({ success: true, message: 'Participant removed' });
 });
 
-app.delete('/api/participants', (req, res) => {
+app.delete('/api/participants', async (_req, res) => {
   participants = [];
+  await saveParticipantsState();
   res.json({ success: true, message: 'All participants cleared' });
 });
 
@@ -181,8 +329,8 @@ function sanitizeServerQuestion(q: any) {
 }
 
 // Questions API (Read & Full Management)
-app.get('/api/questions', (_req, res) => {
-  loadQuestionsState();
+app.get('/api/questions', async (_req, res) => {
+  await loadQuestionsState();
   const sanitized = questions.map(sanitizeServerQuestion);
   res.json({ success: true, data: sanitized });
 });
@@ -253,10 +401,11 @@ app.post('/api/admin/parse-word-ai', async (req, res) => {
     });
   }
 
-  if (!process.env.GEMINI_API_KEY) {
+  const aiClient = getAiClient();
+  if (!aiClient) {
     return res.status(503).json({
       success: false,
-      error: 'Kunci API Gemini belum tersedia di server. Periksa panel Settings > Secrets atau gunakan pengurai lokal Word.',
+      error: 'Kunci API Gemini belum tersedia di server. Periksa pengaturan Environment Variables atau gunakan pengurai lokal Word.',
     });
   }
 
@@ -268,7 +417,7 @@ app.post('/api/admin/parse-word-ai', async (req, res) => {
     const maxAttempts = 3;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        response = await ai.models.generateContent({
+        response = await aiClient.models.generateContent({
           model: 'gemini-4-hydrogen',
           contents: rawText,
           config: {
@@ -420,10 +569,11 @@ app.post('/api/admin/parse-pdf-image-ai', uploadMedia.single('file'), async (req
     });
   }
 
-  if (!process.env.GEMINI_API_KEY) {
+  const aiClient = getAiClient();
+  if (!aiClient) {
     return res.status(503).json({
       success: false,
-      error: 'Kunci API Gemini belum tersedia di server. Periksa panel Settings > Secrets.',
+      error: 'Kunci API Gemini belum tersedia di server. Periksa pengaturan Environment Variables.',
     });
   }
 
@@ -445,7 +595,7 @@ app.post('/api/admin/parse-pdf-image-ai', uploadMedia.single('file'), async (req
     const maxAttempts = 3;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        response = await ai.models.generateContent({
+        response = await aiClient.models.generateContent({
           model: 'gemini-4-hydrogen',
           contents: { parts: [mediaPart, promptPart] },
           config: {
@@ -618,8 +768,8 @@ app.post('/api/admin/fetch-sheets-questions', async (req, res) => {
 });
 
 // Bulk save questions from Word importer preview
-app.post('/api/questions/bulk', (req, res) => {
-  loadQuestionsState();
+app.post('/api/questions/bulk', async (req, res) => {
+  await loadQuestionsState();
   const {
     questions: incoming,
     mode = 'append',
@@ -654,13 +804,13 @@ app.post('/api/questions/bulk', (req, res) => {
     questions = [...questions, ...sanitizedIncoming];
   }
 
-  saveQuestionsState();
+  await saveQuestionsState();
   res.json({ success: true, data: questions });
 });
 
 // Add single question
-app.post('/api/questions', (req, res) => {
-  loadQuestionsState();
+app.post('/api/questions', async (req, res) => {
+  await loadQuestionsState();
   const payload = req.body;
   if (!payload || (!payload.text && !payload.imageUrl)) {
     return res.status(400).json({ success: false, error: 'Teks soal atau gambar wajib diisi.' });
@@ -671,13 +821,13 @@ app.post('/api/questions', (req, res) => {
     points: payload.points || { correct: 4, wrong: -1, blank: 0 },
   });
   questions = [...questions, newQuestion];
-  saveQuestionsState();
+  await saveQuestionsState();
   res.json({ success: true, data: questions, added: newQuestion });
 });
 
 // Update single question
-app.put('/api/questions/:id', (req, res) => {
-  loadQuestionsState();
+app.put('/api/questions/:id', async (req, res) => {
+  await loadQuestionsState();
   const { id } = req.params;
   const idx = questions.findIndex((q) => q.id === id);
   if (idx === -1) {
@@ -688,56 +838,61 @@ app.put('/api/questions/:id', (req, res) => {
     ...req.body,
     id,
   });
-  saveQuestionsState();
+  await saveQuestionsState();
   res.json({ success: true, data: questions, updated: questions[idx] });
 });
 
 // Delete single question
-app.delete('/api/questions/:id', (req, res) => {
-  loadQuestionsState();
+app.delete('/api/questions/:id', async (req, res) => {
+  await loadQuestionsState();
   const { id } = req.params;
   const before = questions.length;
   questions = questions.filter((q) => q.id !== id);
   if (questions.length === before) {
     return res.status(404).json({ success: false, error: 'Soal tidak ditemukan.' });
   }
-  saveQuestionsState();
+  await saveQuestionsState();
   res.json({ success: true, data: questions });
 });
 
 // Clear all questions
-app.post('/api/questions/clear-all', (_req, res) => {
+app.post('/api/questions/clear-all', async (_req, res) => {
   questions = [];
-  saveQuestionsState();
+  await saveQuestionsState();
   res.json({ success: true, data: questions });
 });
 
 // Reset questions to built-in INITIAL_QUESTIONS_DATA
-app.post('/api/questions/reset', (_req, res) => {
+app.post('/api/questions/reset', async (_req, res) => {
   questions = [...INITIAL_QUESTIONS_DATA];
-  saveQuestionsState();
+  await saveQuestionsState();
   res.json({ success: true, data: questions.map(sanitizeServerQuestion) });
 });
 
 
 // Broadcast and warnings
-app.get('/api/broadcast', (req, res) => {
+app.get('/api/broadcast', async (_req, res) => {
+  await loadCommsState();
   res.json({ success: true, data: currentBroadcast });
 });
 
-app.post('/api/broadcast', (req, res) => {
+app.post('/api/broadcast', async (req, res) => {
+  await loadCommsState();
   const { message } = req.body;
   currentBroadcast = message ? { message, timestamp: Date.now() } : null;
+  await saveCommsState();
   res.json({ success: true, data: currentBroadcast });
 });
 
-app.get('/api/warnings/:participantId', (req, res) => {
+app.get('/api/warnings/:participantId', async (req, res) => {
+  await loadCommsState();
   const { participantId } = req.params;
   const warning = participantWarnings[participantId] || null;
   res.json({ success: true, data: warning });
 });
 
-app.post('/api/warnings/:participantId', (req, res) => {
+app.post('/api/warnings/:participantId', async (req, res) => {
+  await loadCommsState();
   const { participantId } = req.params;
   const { message } = req.body;
   if (message) {
@@ -745,6 +900,7 @@ app.post('/api/warnings/:participantId', (req, res) => {
   } else {
     delete participantWarnings[participantId];
   }
+  await saveCommsState();
   res.json({ success: true, data: participantWarnings[participantId] || null });
 });
 
@@ -757,12 +913,26 @@ let proctorConfig = {
   zoomInstructions: 'Gunakan HP kedua diletakkan di samping/serong kanan untuk memperlihatkan meja dan peserta selama ujian.',
 };
 
-app.get('/api/proctor-config', (req, res) => {
+async function loadProctorConfigState(): Promise<void> {
+  const remote = await kvGetJson<typeof proctorConfig>('mmo:proctor_config');
+  if (remote && typeof remote === 'object') {
+    proctorConfig = { ...proctorConfig, ...remote };
+  }
+}
+
+async function saveProctorConfigState(): Promise<void> {
+  await kvSetJson('mmo:proctor_config', proctorConfig);
+}
+
+app.get('/api/proctor-config', async (_req, res) => {
+  await loadProctorConfigState();
   res.json({ success: true, data: proctorConfig });
 });
 
-app.post('/api/proctor-config', (req, res) => {
+app.post('/api/proctor-config', async (req, res) => {
+  await loadProctorConfigState();
   proctorConfig = { ...proctorConfig, ...req.body };
+  await saveProctorConfigState();
   res.json({ success: true, data: proctorConfig });
 });
 
@@ -779,7 +949,8 @@ app.post('/api/ai-violation-report', async (req, res) => {
 
   let reportText = '';
   try {
-    if (process.env.GEMINI_API_KEY) {
+    const aiClient = getAiClient();
+    if (aiClient) {
       const parts: any[] = [];
       if (snapshotBase64 && typeof snapshotBase64 === 'string') {
         const cleanBase64 = snapshotBase64.replace(/^data:image\/\w+;base64,/, '');
@@ -808,7 +979,7 @@ Analisis bukti visual foto kamera dan log di atas. Buat ringkasan laporan inside
 Tulis dalam 3-4 kalimat ringkas, formal, dan objektif dalam Bahasa Indonesia.`,
       });
 
-      const response = await ai.models.generateContent({
+      const response = await aiClient.models.generateContent({
         model: 'gemini-4-hydrogen',
         contents: parts.length === 1 ? parts[0].text : { parts },
       });
@@ -822,7 +993,8 @@ Tulis dalam 3-4 kalimat ringkas, formal, dan objektif dalam Bahasa Indonesia.`,
     reportText = `Terdeteksi akumulasi ${strikeCount} pelanggaran (alih tab / keluar layar penuh). Pengawas diimbau menindaklanjuti.`;
   }
 
-  // Save report to participant record in memory
+  await loadParticipantsState();
+  // Save report to participant record
   const idx = participants.findIndex((p) => p.id === participantId);
   if (idx >= 0) {
     participants[idx] = {
@@ -833,6 +1005,7 @@ Tulis dalam 3-4 kalimat ringkas, formal, dan objektif dalam Bahasa Indonesia.`,
       strikeCount: Number(strikeCount),
       lastActive: 'Pelanggaran Tercatat (AI)',
     };
+    await saveParticipantsState();
   }
 
   res.json({
@@ -909,6 +1082,47 @@ const DEFAULT_PARTICIPANTS = [
 let serverRegisteredParticipants: any[] = [...DEFAULT_PARTICIPANTS];
 let serverIsDemoActive: boolean = true;
 let serverLastSyncText: string = 'Data Bawaan Siap Pakai';
+const REGISTERED_PARTICIPANTS_FILE = path.join(os.tmpdir(), 'mmo_registered_participants.json');
+
+async function loadRegisteredParticipantsState(): Promise<void> {
+  const remote = await kvGetJson<{
+    participants?: any[];
+    isDemoActive?: boolean;
+    lastSyncText?: string;
+  }>('mmo:registered_participants');
+  if (remote) {
+    if (Array.isArray(remote.participants)) serverRegisteredParticipants = remote.participants;
+    if (typeof remote.isDemoActive === 'boolean') serverIsDemoActive = remote.isDemoActive;
+    if (typeof remote.lastSyncText === 'string') serverLastSyncText = remote.lastSyncText;
+    return;
+  }
+  try {
+    if (fs.existsSync(REGISTERED_PARTICIPANTS_FILE)) {
+      const raw = fs.readFileSync(REGISTERED_PARTICIPANTS_FILE, 'utf-8');
+      const data = JSON.parse(raw);
+      if (Array.isArray(data.participants)) serverRegisteredParticipants = data.participants;
+      if (typeof data.isDemoActive === 'boolean') serverIsDemoActive = data.isDemoActive;
+      if (typeof data.lastSyncText === 'string') serverLastSyncText = data.lastSyncText;
+    }
+  } catch {
+    // ignore
+  }
+}
+
+async function saveRegisteredParticipantsState(): Promise<void> {
+  const payload = {
+    participants: serverRegisteredParticipants,
+    isDemoActive: serverIsDemoActive,
+    lastSyncText: serverLastSyncText,
+    updatedAt: Date.now(),
+  };
+  try {
+    fs.writeFileSync(REGISTERED_PARTICIPANTS_FILE, JSON.stringify(payload), 'utf-8');
+  } catch {
+    // ignore
+  }
+  await kvSetJson('mmo:registered_participants', payload);
+}
 
 // Central Exam Gate State (Controls whether examinees can start exam or must stay in waiting room)
 let isExamGateOpen: boolean = false;
@@ -921,10 +1135,29 @@ let examGateMatrix: Record<string, boolean> = {
   'SMA_Semifinal': false,
 };
 
-// Persistent file cache for Vercel Serverless container warm instances
+// Persistent file + Cloud KV cache for Vercel Serverless instances
 const GATE_STATE_FILE = path.join(os.tmpdir(), 'mmo_exam_gate.json');
 
-function loadGateState(): void {
+async function loadGateState(): Promise<void> {
+  const remote = await kvGetJson<{
+    isOpen?: boolean;
+    openedAt?: string | null;
+    passcode?: string;
+    gateMatrix?: Record<string, boolean>;
+  }>('mmo:exam_gate');
+  if (remote) {
+    if (typeof remote.isOpen === 'boolean') isExamGateOpen = remote.isOpen;
+    if (remote.openedAt !== undefined) examGateOpenedAt = remote.openedAt;
+    if (remote.passcode) examGatePasscode = remote.passcode;
+    if (remote.gateMatrix && typeof remote.gateMatrix === 'object') {
+      examGateMatrix = {
+        ...examGateMatrix,
+        ...remote.gateMatrix,
+      };
+    }
+    return;
+  }
+
   try {
     if (fs.existsSync(GATE_STATE_FILE)) {
       const raw = fs.readFileSync(GATE_STATE_FILE, 'utf-8');
@@ -939,35 +1172,30 @@ function loadGateState(): void {
         };
       }
     }
-  } catch (e) {
+  } catch {
     // Silently fall back to in-memory state
   }
 }
 
-function saveGateState(): void {
+async function saveGateState(): Promise<void> {
+  const payload = {
+    isOpen: isExamGateOpen,
+    openedAt: examGateOpenedAt,
+    passcode: examGatePasscode,
+    gateMatrix: examGateMatrix,
+    updatedAt: Date.now(),
+  };
   try {
-    fs.writeFileSync(
-      GATE_STATE_FILE,
-      JSON.stringify({
-        isOpen: isExamGateOpen,
-        openedAt: examGateOpenedAt,
-        passcode: examGatePasscode,
-        gateMatrix: examGateMatrix,
-        updatedAt: Date.now(),
-      }),
-      'utf-8'
-    );
-  } catch (e) {
+    fs.writeFileSync(GATE_STATE_FILE, JSON.stringify(payload), 'utf-8');
+  } catch {
     // Silently ignore write failures in read-only systems
   }
+  await kvSetJson('mmo:exam_gate', payload);
 }
 
-// Initial state load
-loadGateState();
-
 // GET exam gate status
-app.get('/api/exam-gate', (_req, res) => {
-  loadGateState();
+app.get('/api/exam-gate', async (_req, res) => {
+  await loadGateState();
   res.json({
     success: true,
     data: {
@@ -975,14 +1203,16 @@ app.get('/api/exam-gate', (_req, res) => {
       openedAt: examGateOpenedAt,
       passcode: examGatePasscode,
       gateMatrix: examGateMatrix,
+      storageMode: hasCloudKv ? 'cloud-kv' : 'memory-tmp',
+      runtime: process.env.VERCEL ? 'vercel-serverless' : 'node-server',
     },
   });
 });
 
 // POST update exam gate status (called by Proctor Dashboard)
-app.post('/api/exam-gate', (req, res) => {
-  loadGateState();
-  const { isOpen, passcode, gateMatrix, gateKey, gateValue, applyAll } = req.body;
+app.post('/api/exam-gate', async (req, res) => {
+  await loadGateState();
+  const { isOpen, passcode, gateMatrix, gateKey, gateValue, applyAll } = req.body || {};
 
   // Single gate key toggle: e.g. gateKey: 'SMP_Penyisihan', gateValue: true
   if (gateKey && typeof gateValue === 'boolean') {
@@ -1021,7 +1251,7 @@ app.post('/api/exam-gate', (req, res) => {
     examGatePasscode = passcode.trim().toUpperCase();
   }
 
-  saveGateState();
+  await saveGateState();
   res.json({
     success: true,
     data: {
@@ -1029,19 +1259,20 @@ app.post('/api/exam-gate', (req, res) => {
       openedAt: examGateOpenedAt,
       passcode: examGatePasscode,
       gateMatrix: examGateMatrix,
+      storageMode: hasCloudKv ? 'cloud-kv' : 'memory-tmp',
+      runtime: process.env.VERCEL ? 'vercel-serverless' : 'node-server',
     },
   });
 });
 
 // POST verify emergency gate passcode (called by participant in waiting room)
-app.post('/api/exam-gate/verify-passcode', (req, res) => {
-  loadGateState();
-  const { passcode } = req.body;
+app.post('/api/exam-gate/verify-passcode', async (req, res) => {
+  await loadGateState();
+  const { passcode } = req.body || {};
   const inputCode = String(passcode || '').trim().toUpperCase();
   const valid = inputCode === examGatePasscode.toUpperCase() || inputCode === 'MMO2027';
 
   if (valid) {
-    // If entered correctly, allow student entry
     res.json({
       success: true,
       message: 'Kode akses darurat valid! Mengizinkan akses ujian.',
@@ -1059,8 +1290,9 @@ app.post('/api/exam-gate/verify-passcode', (req, res) => {
 });
 
 // POST change participant password (called by participant in waiting room)
-app.post('/api/change-password', (req, res) => {
-  const { participantId, oldPassword, newPassword } = req.body;
+app.post('/api/change-password', async (req, res) => {
+  await loadRegisteredParticipantsState();
+  const { participantId, oldPassword, newPassword } = req.body || {};
   const pId = String(participantId || '').trim();
   const oldPass = String(oldPassword || '').trim();
   const newPass = String(newPassword || '').trim();
@@ -1086,6 +1318,7 @@ app.post('/api/change-password', (req, res) => {
   }
 
   serverRegisteredParticipants[idx].password = newPass;
+  await saveRegisteredParticipantsState();
   res.json({
     success: true,
     message: 'Kata sandi berhasil diperbarui! Gunakan kata sandi baru untuk login berikutnya.',
@@ -1094,7 +1327,9 @@ app.post('/api/change-password', (req, res) => {
 });
 
 // GET all registered participants from server (called by HP on load/step 3)
-app.get('/api/registered-participants', (req, res) => {
+app.get('/api/registered-participants', async (_req, res) => {
+  await loadRegisteredParticipantsState();
+  await loadGateState();
   res.json({
     success: true,
     data: {
@@ -1107,10 +1342,11 @@ app.get('/api/registered-participants', (req, res) => {
 });
 
 // POST update registered participants (called by Laptop proctor when syncing Google Sheets / uploading Excel)
-app.post('/api/registered-participants', (req, res) => {
-  const { participants, isDemoActive, lastSyncText } = req.body;
-  if (Array.isArray(participants)) {
-    serverRegisteredParticipants = participants;
+app.post('/api/registered-participants', async (req, res) => {
+  await loadRegisteredParticipantsState();
+  const { participants: incomingList, isDemoActive, lastSyncText } = req.body || {};
+  if (Array.isArray(incomingList)) {
+    serverRegisteredParticipants = incomingList;
   }
   if (typeof isDemoActive === 'boolean') {
     serverIsDemoActive = isDemoActive;
@@ -1118,6 +1354,8 @@ app.post('/api/registered-participants', (req, res) => {
   if (typeof lastSyncText === 'string') {
     serverLastSyncText = lastSyncText;
   }
+  await saveRegisteredParticipantsState();
+  await loadGateState();
   res.json({
     success: true,
     data: {
@@ -1131,10 +1369,9 @@ app.post('/api/registered-participants', (req, res) => {
 });
 
 // Real-time server-side participant authentication endpoint
-// Matches by Nama Lengkap (case-insensitive & whitespace-normalized) OR Email
-// Password defaults to NISN, with support for updated passwords
-app.post('/api/authenticate-participant', (req, res) => {
-  const { fullName, name, email, password } = req.body;
+app.post('/api/authenticate-participant', async (req, res) => {
+  await loadRegisteredParticipantsState();
+  const { fullName, name, email, password, category, stage } = req.body || {};
   const inputName = String(fullName || name || email || '').trim();
   const cleanPassword = String(password || '').trim();
 
@@ -1149,7 +1386,6 @@ app.post('/api/authenticate-participant', (req, res) => {
     });
   }
 
-  // Normalizer: collapses multiple whitespace, removes trailing/leading spaces, lowercases
   const normalize = (str: string) => str.trim().replace(/\s+/g, ' ').toLowerCase();
   const normalizedInput = normalize(inputName);
 
@@ -1158,7 +1394,6 @@ app.post('/api/authenticate-participant', (req, res) => {
     const pEmail = String(p.email || '').trim().toLowerCase();
     const pNisn = String(p.nisnOrRegNumber || '').trim();
 
-    // Match by full name (case-insensitive) OR email OR exact NISN
     return pName === normalizedInput || pEmail === normalizedInput.toLowerCase() || pNisn === inputName;
   });
 
@@ -1169,7 +1404,6 @@ app.post('/api/authenticate-participant', (req, res) => {
     });
   }
 
-  // Password matching: matches either participant's current password or initial NISN
   const currentPass = String(found.password || '').trim();
   const nisnPass = String(found.nisnOrRegNumber || '').trim();
 
@@ -1182,13 +1416,12 @@ app.post('/api/authenticate-participant', (req, res) => {
     });
   }
 
-  loadGateState();
-  const { category, stage } = req.body;
+  await loadGateState();
   let specificGateOpen = isExamGateOpen;
   if (category && stage) {
     const key = `${category}_${stage}`;
     if (typeof examGateMatrix[key] === 'boolean') {
-      specificGateOpen = examGateMatrix[key] || isExamGateOpen;
+      specificGateOpen = examGateMatrix[key];
     }
   }
 
@@ -1292,7 +1525,18 @@ const FEEDBACK_STORE_FILE = path.join(os.tmpdir(), 'mmo_site_feedback.json');
 let feedbackEntries: SiteFeedbackEntry[] = [];
 let feedbackWebhookUrl: string = (process.env.FEEDBACK_SHEETS_WEBHOOK_URL || '').trim();
 
-function loadFeedbackState(): void {
+async function loadFeedbackState(): Promise<void> {
+  const remote = await kvGetJson<{ entries?: SiteFeedbackEntry[]; webhookUrl?: string }>('mmo:site_feedback');
+  if (remote) {
+    if (Array.isArray(remote.entries)) {
+      feedbackEntries = remote.entries;
+    }
+    if (typeof remote.webhookUrl === 'string' && (remote.webhookUrl.trim() || !process.env.FEEDBACK_SHEETS_WEBHOOK_URL)) {
+      feedbackWebhookUrl = remote.webhookUrl.trim();
+    }
+    return;
+  }
+
   try {
     if (fs.existsSync(FEEDBACK_STORE_FILE)) {
       const raw = fs.readFileSync(FEEDBACK_STORE_FILE, 'utf-8');
@@ -1311,23 +1555,19 @@ function loadFeedbackState(): void {
   }
 }
 
-function saveFeedbackState(): void {
+async function saveFeedbackState(): Promise<void> {
+  const payload = {
+    entries: feedbackEntries,
+    webhookUrl: feedbackWebhookUrl,
+    updatedAt: Date.now(),
+  };
   try {
-    fs.writeFileSync(
-      FEEDBACK_STORE_FILE,
-      JSON.stringify({
-        entries: feedbackEntries,
-        webhookUrl: feedbackWebhookUrl,
-        updatedAt: Date.now(),
-      }),
-      'utf-8'
-    );
+    fs.writeFileSync(FEEDBACK_STORE_FILE, JSON.stringify(payload), 'utf-8');
   } catch {
     // Ignore read-only filesystem errors
   }
+  await kvSetJson('mmo:site_feedback', payload);
 }
-
-loadFeedbackState();
 
 function formatWibDateTime(date: Date): string {
   try {
@@ -1452,15 +1692,19 @@ async function forwardFeedbackToWebhook(
   }
 }
 
-app.get('/api/feedback', (_req, res) => {
+app.get('/api/feedback', async (_req, res) => {
+  await loadFeedbackState();
   res.json({
     success: true,
     data: feedbackEntries,
     webhookUrl: feedbackWebhookUrl,
+    storageMode: hasCloudKv ? 'cloud-kv' : 'memory-tmp',
+    runtime: process.env.VERCEL ? 'vercel-serverless' : 'node-server',
   });
 });
 
 app.post('/api/feedback', async (req, res) => {
+  await loadFeedbackState();
   const {
     participantId,
     participantName,
@@ -1495,7 +1739,7 @@ app.post('/api/feedback', async (req, res) => {
   };
 
   feedbackEntries = [entry, ...feedbackEntries];
-  saveFeedbackState();
+  await saveFeedbackState();
 
   if (feedbackWebhookUrl) {
     const rowNumber = feedbackEntries.length;
@@ -1509,7 +1753,7 @@ app.post('/api/feedback', async (req, res) => {
       entry.webhookError = syncRes.error;
     }
     feedbackEntries = feedbackEntries.map((item) => (item.id === entry.id ? entry : item));
-    saveFeedbackState();
+    await saveFeedbackState();
   }
 
   res.json({
@@ -1518,14 +1762,16 @@ app.post('/api/feedback', async (req, res) => {
   });
 });
 
-app.get('/api/feedback/webhook', (_req, res) => {
+app.get('/api/feedback/webhook', async (_req, res) => {
+  await loadFeedbackState();
   res.json({
     success: true,
     webhookUrl: feedbackWebhookUrl,
   });
 });
 
-app.post('/api/feedback/webhook', (req, res) => {
+app.post('/api/feedback/webhook', async (req, res) => {
+  await loadFeedbackState();
   const { webhookUrl } = req.body || {};
   const check = validateWebhookUrl(webhookUrl ?? '');
   if (!check.valid) {
@@ -1536,7 +1782,7 @@ app.post('/api/feedback/webhook', (req, res) => {
   }
 
   feedbackWebhookUrl = check.normalized;
-  saveFeedbackState();
+  await saveFeedbackState();
 
   res.json({
     success: true,
@@ -1545,6 +1791,7 @@ app.post('/api/feedback/webhook', (req, res) => {
 });
 
 app.post('/api/feedback/webhook/test', async (req, res) => {
+  await loadFeedbackState();
   const targetUrl = typeof req.body?.webhookUrl === 'string' && req.body.webhookUrl.trim()
     ? req.body.webhookUrl.trim()
     : feedbackWebhookUrl;
@@ -1585,6 +1832,7 @@ app.post('/api/feedback/webhook/test', async (req, res) => {
 });
 
 app.post('/api/feedback/sync-all', async (_req, res) => {
+  await loadFeedbackState();
   if (!feedbackWebhookUrl) {
     return res.status(400).json({
       success: false,
@@ -1616,7 +1864,7 @@ app.post('/api/feedback/sync-all', async (_req, res) => {
   }
 
   feedbackEntries = [...chronological].sort((a, b) => b.createdAt - a.createdAt);
-  saveFeedbackState();
+  await saveFeedbackState();
 
   res.json({
     success: true,
@@ -1628,6 +1876,7 @@ app.post('/api/feedback/sync-all', async (_req, res) => {
 });
 
 app.post('/api/feedback/:id/sync', async (req, res) => {
+  await loadFeedbackState();
   const { id } = req.params;
   if (!feedbackWebhookUrl) {
     return res.status(400).json({
@@ -1666,7 +1915,7 @@ app.post('/api/feedback/:id/sync', async (req, res) => {
   }
 
   feedbackEntries[idx] = entry;
-  saveFeedbackState();
+  await saveFeedbackState();
 
   res.json({
     success: syncRes.ok,
@@ -1675,20 +1924,30 @@ app.post('/api/feedback/:id/sync', async (req, res) => {
   });
 });
 
-app.delete('/api/feedback/:id', (req, res) => {
+app.delete('/api/feedback/:id', async (req, res) => {
+  await loadFeedbackState();
   const { id } = req.params;
   const beforeLen = feedbackEntries.length;
   feedbackEntries = feedbackEntries.filter((item) => item.id !== id);
   if (feedbackEntries.length !== beforeLen) {
-    saveFeedbackState();
+    await saveFeedbackState();
   }
   res.json({ success: true, remaining: feedbackEntries.length });
 });
 
-app.delete('/api/feedback', (_req, res) => {
+app.delete('/api/feedback', async (_req, res) => {
   feedbackEntries = [];
-  saveFeedbackState();
+  await saveFeedbackState();
   res.json({ success: true });
+});
+
+// Always return clean JSON errors from /api/* so frontend never sees plain-text HTML crashes
+app.use('/api', (err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('Unhandled /api error:', err);
+  res.status(err?.status || 500).json({
+    success: false,
+    error: err?.message || 'Terjadi kesalahan internal pada server API.',
+  });
 });
 
 async function startServer() {
@@ -1706,9 +1965,9 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static(path.resolve(__dirname, 'dist')));
-    app.get('*', (req, res) => {
-      res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
+    app.use(express.static(path.resolve(resolvedDirname, 'dist')));
+    app.get('*', (_req, res) => {
+      res.sendFile(path.resolve(resolvedDirname, 'dist', 'index.html'));
     });
   }
 

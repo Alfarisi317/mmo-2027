@@ -1,4 +1,4 @@
-import { Question } from '../types/index';
+import { Question } from '../types/index.js';
 
 /**
  * Helper to verify if a trailing alphanumeric token beside a fraction is Word shadow/fallback noise

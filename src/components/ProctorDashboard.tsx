@@ -160,6 +160,8 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
   const [isTogglingGate, setIsTogglingGate] = useState<boolean>(false);
   const [togglingKey, setTogglingKey] = useState<string | null>(null);
   const [gateSource, setGateSource] = useState<'server' | 'cache' | 'local_override'>('server');
+  const [serverStorageMode, setServerStorageMode] = useState<'cloud-kv' | 'memory-tmp' | undefined>(undefined);
+  const [serverRuntime, setServerRuntime] = useState<'vercel-serverless' | 'node-server' | undefined>(undefined);
   const [examPasscode, setExamPasscode] = useState<string>('MMO2027');
 
   useEffect(() => {
@@ -170,6 +172,8 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
         if (isMounted) {
           setIsExamGateOpen(res.isOpen);
           if (res.source) setGateSource(res.source);
+          if (res.storageMode) setServerStorageMode(res.storageMode);
+          if (res.runtime) setServerRuntime(res.runtime);
           if (res.passcode) setExamPasscode(res.passcode);
           if (res.gateMatrix) {
             setGateMatrix(res.gateMatrix);
@@ -207,6 +211,8 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
       setIsExamGateOpen(res.isOpen);
       setGateMatrix(res.gateMatrix);
       if (res.source) setGateSource(res.source);
+      if (res.storageMode) setServerStorageMode(res.storageMode);
+      if (res.runtime) setServerRuntime(res.runtime);
       setBroadcastNotice(
         targetStatus
           ? `🔓 Akses Soal ${category} · Babak ${stage} resmi DIBUKA! Peserta yang memilih ${category} ${stage} dapat langsung mengerjakan.`
@@ -234,6 +240,8 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
       setIsExamGateOpen(true);
       setGateMatrix(res.gateMatrix);
       if (res.source) setGateSource(res.source);
+      if (res.storageMode) setServerStorageMode(res.storageMode);
+      if (res.runtime) setServerRuntime(res.runtime);
       setBroadcastNotice('🔓 SEMUA AKSES SOAL (SMP & SMA — Penyisihan & Semifinal) resmi DIBUKA!');
       setTimeout(() => setBroadcastNotice(null), 5000);
     } catch (err) {
@@ -259,6 +267,8 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
       setIsExamGateOpen(false);
       setGateMatrix(res.gateMatrix);
       if (res.source) setGateSource(res.source);
+      if (res.storageMode) setServerStorageMode(res.storageMode);
+      if (res.runtime) setServerRuntime(res.runtime);
       setBroadcastNotice('🔒 SEMUA AKSES SOAL resmi DIKUNCI. Seluruh peserta akan tertahan di Ruang Tunggu.');
       setTimeout(() => setBroadcastNotice(null), 5000);
     } catch (err) {
@@ -582,6 +592,8 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
       setFeedbackList(res.data);
       setFeedbackWebhookUrl(res.webhookUrl);
       setFeedbackWebhookInput((prev) => (prev === '' && res.webhookUrl ? res.webhookUrl : prev || res.webhookUrl));
+      if (res.storageMode) setServerStorageMode(res.storageMode);
+      if (res.runtime) setServerRuntime(res.runtime);
     } finally {
       if (!silent) setIsLoadingFeedback(false);
     }
@@ -1498,8 +1510,20 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
                   }`}>
                     {Object.values(gateMatrix).filter(Boolean).length} dari 4 Akses Terbuka
                   </span>
-                  <span className="text-[10px] text-[#DCE9F5] bg-[#243E59] border border-[#4E779F] px-2.5 py-0.5 rounded-lg font-mono">
-                    {gateSource === 'server' ? '🌐 Vercel Serverless Sync' : '⚡ Local Resilient Cache'}
+                  <span className={`text-[10px] px-2.5 py-0.5 rounded-lg font-mono border ${
+                    gateSource === 'server' && (serverStorageMode === 'cloud-kv' || serverRuntime === 'node-server')
+                      ? 'text-emerald-200 bg-emerald-950/60 border-emerald-500/60'
+                      : gateSource === 'server'
+                        ? 'text-amber-200 bg-amber-950/60 border-amber-400/60'
+                        : 'text-rose-200 bg-rose-950/60 border-rose-400/60'
+                  }`}>
+                    {gateSource !== 'server'
+                      ? '⚡ Cache Browser (Server Offline)'
+                      : serverStorageMode === 'cloud-kv'
+                        ? '☁️ Cloud KV Sync (Antarperangkat Permanen)'
+                        : serverRuntime === 'vercel-serverless'
+                          ? '⚠️ Vercel Ephemeral (Butuh Upstash/KV)'
+                          : '🌐 Node Server Sync'}
                   </span>
                   <span className="text-[10px] text-[#DCE9F5] bg-[#243E59] border border-[#4E779F] px-2.5 py-0.5 rounded-lg flex items-center gap-1 font-mono">
                     <span>Kode Darurat:</span>
@@ -1538,6 +1562,15 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
                 </button>
               </div>
             </div>
+
+            {serverRuntime === 'vercel-serverless' && serverStorageMode !== 'cloud-kv' && (
+              <div className="p-3.5 rounded-2xl bg-amber-950/50 border border-amber-400/70 text-amber-100 text-xs flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
+                <div className="leading-relaxed">
+                  <strong>Catatan Sinkronisasi HP ↔ Laptop di Vercel:</strong> Server Vercel aktif tanpa database bersama (Cloud KV). Agar status Buka/Tutup Pintu Ujian dan Pesan &amp; Saran konsisten 100% di semua perangkat saat traffic tinggi, hubungkan integrasi gratis <strong>Upstash Redis / Vercel KV</strong> di <em>Vercel Dashboard → Storage</em> (otomatis mengisi <code className="bg-black/30 px-1 rounded">KV_REST_API_URL</code> &amp; <code className="bg-black/30 px-1 rounded">KV_REST_API_TOKEN</code>), lalu Redeploy.
+                </div>
+              </div>
+            )}
 
             {/* 4 Interactive Switches Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 text-[#1E3954]">
@@ -4078,6 +4111,15 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
                 >
                   <X className="w-4 h-4" />
                 </button>
+              </div>
+            )}
+
+            {serverRuntime === 'vercel-serverless' && serverStorageMode !== 'cloud-kv' && (
+              <div className="p-3.5 rounded-2xl bg-amber-950/50 border border-amber-400/70 text-amber-100 text-xs flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
+                <div className="leading-relaxed">
+                  <strong>Penyimpanan Vercel Belum Permanen:</strong> Tanpa Upstash Redis / Vercel KV, daftar Pesan &amp; Saran di serverless dapat hilang saat instance Vercel restart. Hubungkan <strong>Upstash Redis</strong> di <em>Vercel Dashboard → Storage</em> atau aktifkan <strong>Webhook Google Sheets</strong> di bawah agar setiap pesan peserta langsung terekam permanen ke spreadsheet.
+                </div>
               </div>
             )}
           </div>

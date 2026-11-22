@@ -6,8 +6,8 @@ import {
   Question,
   QuestionOption,
   QuestionType,
-} from '../types/index';
-import { sanitizeMathString } from './mathSanitizer';
+} from '../types/index.js';
+import { sanitizeMathString } from './mathSanitizer.js';
 
 export interface ParsedWordQuestionDraft {
   tempId: string;

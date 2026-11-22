@@ -6,15 +6,15 @@ import {
   Question,
   QuestionOption,
   QuestionType,
-} from '../types/index';
-import { sanitizeMathString } from './mathSanitizer';
+} from '../types/index.js';
+import { sanitizeMathString } from './mathSanitizer.js';
 import {
   ParsedWordQuestionDraft,
   WordImportDefaults,
   WordParseResult,
   draftsToStructuredJson,
   inferMathDomain,
-} from './wordEquationParser';
+} from './wordEquationParser.js';
 
 function normalizeHeaderKey(header: string): string {
   return String(header || '')
