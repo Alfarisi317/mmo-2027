@@ -1,21 +1,25 @@
 import React from 'react';
 import { Award, GraduationCap, MapPin, Mail, Globe, CheckCircle, Sparkles } from 'lucide-react';
+import { MmoLogo } from './MmoLogo';
 
 export const AboutView: React.FC = () => {
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 lg:py-12 space-y-8 text-white">
       {/* Header */}
-      <div className="border-b-2 border-[#E49548]/60 pb-6">
-        <div className="inline-flex items-center gap-2 bg-[#F4E6CC] text-[#1E3954] px-4 py-1.5 rounded-full text-xs font-extrabold shadow-xs mb-3 border border-[#E49548]">
-          <Sparkles className="w-3.5 h-3.5 text-[#CE7D30]" />
-          <span>Penyelenggara Resmi Kompetisi</span>
+      <div className="border-b-2 border-[#E49548]/60 pb-6 flex items-start sm:items-center gap-4">
+        <MmoLogo size="lg" className="shadow-md" />
+        <div>
+          <div className="inline-flex items-center gap-2 bg-[#F4E6CC] text-[#1E3954] px-4 py-1.5 rounded-full text-xs font-extrabold shadow-xs mb-3 border border-[#E49548]">
+            <Sparkles className="w-3.5 h-3.5 text-[#CE7D30]" />
+            <span>Penyelenggara Resmi Kompetisi</span>
+          </div>
+          <h1 className="text-2xl lg:text-3xl font-extrabold text-white tracking-tight">
+            HMPS MATRIKS Bidang Keilmuan
+          </h1>
+          <p className="text-xs text-[#DCE9F5] mt-1">
+            Program Studi Pendidikan Matematika · Universitas Muhammadiyah Malang (UMM)
+          </p>
         </div>
-        <h1 className="text-2xl lg:text-3xl font-extrabold text-white tracking-tight">
-          HMPS MATRIKS Bidang Keilmuan
-        </h1>
-        <p className="text-xs text-[#DCE9F5] mt-1">
-          Program Studi Pendidikan Matematika · Universitas Muhammadiyah Malang (UMM)
-        </p>
       </div>
 
       {/* Narrative Section with Steel Blue & Orange Frame */}

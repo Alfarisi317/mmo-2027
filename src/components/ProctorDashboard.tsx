@@ -68,6 +68,7 @@ import {
   SiteFeedbackEntry,
 } from '../types';
 import { MathRenderer } from './MathRenderer';
+import { MmoLogo } from './MmoLogo';
 import { INITIAL_QUESTIONS_DATA } from '../data/questions';
 import {
   getRegisteredParticipants,
@@ -1260,9 +1261,7 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
     return (
       <div className="min-h-[80vh] flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-md bg-[#2C4B6B]/95 border-2 border-[#E49548] rounded-3xl p-6 sm:p-8 shadow-2xl text-white">
-          <div className="w-14 h-14 rounded-2xl bg-[#E49548] border-2 border-[#F4E6CC] text-[#1E3954] flex items-center justify-center mx-auto mb-4 shadow-md">
-            <KeyRound className="w-7 h-7 text-[#1E3954]" />
-          </div>
+          <MmoLogo size="lg" className="mx-auto mb-4 shadow-md" />
 
           <div className="text-center mb-6">
             <span className="text-[11px] font-extrabold uppercase tracking-wider bg-[#F4E6CC] text-[#1E3954] px-3 py-0.5 rounded-lg inline-block mb-2">
@@ -1345,19 +1344,22 @@ export const ProctorDashboard: React.FC<ProctorDashboardProps> = ({
     <div className="max-w-7xl mx-auto px-4 lg:px-8 py-8 space-y-6">
       {/* Header Bar with Steel-Blue & Amber Poster Theme */}
       <div className="bg-[#2C4B6B]/95 border-2 border-[#E49548] rounded-3xl p-5 sm:p-6 shadow-xl text-white flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-xs font-extrabold uppercase tracking-wider text-[#F4E6CC]">
-              Live Monitoring &amp; Pengawasan · MMO 2027 UMM
-            </span>
+        <div className="flex items-center gap-3.5">
+          <MmoLogo size="lg" className="shadow-md hidden sm:flex" />
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-xs font-extrabold uppercase tracking-wider text-[#F4E6CC]">
+                Live Monitoring &amp; Pengawasan · MMO 2027 UMM
+              </span>
+            </div>
+            <h1 className="text-2xl font-extrabold text-white tracking-tight mt-1">
+              Dasbor Pengawas Panitia (MMO 2027)
+            </h1>
+            <p className="text-xs text-[#DCE9F5] mt-0.5">
+              HMPS Pendidikan Matematika UMM Bidang Keilmuan · Login sebagai: <strong className="text-[#F4E6CC]">alfa</strong>
+            </p>
           </div>
-          <h1 className="text-2xl font-extrabold text-white tracking-tight mt-1">
-            Dasbor Pengawas Panitia (MMO 2027)
-          </h1>
-          <p className="text-xs text-[#DCE9F5] mt-0.5">
-            HMPS Pendidikan Matematika UMM Bidang Keilmuan · Login sebagai: <strong className="text-[#F4E6CC]">alfa</strong>
-          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">

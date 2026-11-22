@@ -35,6 +35,7 @@ import {
   Play,
 } from 'lucide-react';
 import { TrialExamModal } from './TrialExamModal';
+import { MmoLogo } from './MmoLogo';
 import { OlympiadCategory, ParticipantProfile, CompetitionStage, SupervisionMode, RegisteredParticipant } from '../types';
 import {
   authenticateParticipantOnline,
@@ -445,17 +446,25 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
             </svg>
 
             <div className="max-w-3xl space-y-6 relative z-10">
-              {/* Organizer Cream Ribbon */}
-              <div className="inline-flex items-center gap-2 bg-[#F4E6CC] text-[#1E3954] px-4 py-1.5 rounded-full text-xs font-extrabold shadow-sm border border-[#E49548]">
-                <Award className="w-4 h-4 text-[#CE7D30]" />
-                <span>HMPS MATRIKS Bidang Keilmuan · Prodi Pendidikan Matematika UMM</span>
+              {/* Top Official Identity Row with Logo */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-5">
+                <MmoLogo size="xl" className="shadow-lg" />
+                <div className="space-y-2.5">
+                  {/* Organizer Cream Ribbon */}
+                  <div className="inline-flex items-center gap-2 bg-[#F4E6CC] text-[#1E3954] px-4 py-1.5 rounded-full text-xs font-extrabold shadow-sm border border-[#E49548]">
+                    <Award className="w-4 h-4 text-[#CE7D30]" />
+                    <span>HMPS MATRIKS Bidang Keilmuan · Prodi Pendidikan Matematika UMM</span>
+                  </div>
+
+                  {/* Title */}
+                  <h1 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight leading-tight drop-shadow-xs">
+                    Matriks Mathematics Olympiad (MMO) 2027
+                  </h1>
+                </div>
               </div>
 
-              {/* Title & Theme Banner */}
+              {/* Theme Banner */}
               <div>
-                <h1 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight leading-tight drop-shadow-xs">
-                  Matriks Mathematics Olympiad (MMO) 2027
-                </h1>
                 
                 {/* Official Theme Box */}
                 <div className="mt-4 bg-[#243E59] border-2 border-[#E49548] rounded-3xl p-6 sm:p-7 text-white shadow-lg relative overflow-hidden group transition-all duration-300">
@@ -1706,8 +1715,9 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
 
       {/* Footer Details */}
       <footer className="border-t border-[#E49548]/60 pt-6 flex flex-col sm:flex-row items-center justify-between text-xs text-[#DCE9F5] gap-4">
-        <div>
-          © 2027 Matriks Mathematics Olympiad (MMO) · HMPS Pendidikan Matematika UMM
+        <div className="flex items-center gap-2.5">
+          <MmoLogo size="xs" />
+          <span>© 2027 Matriks Mathematics Olympiad (MMO) · HMPS Pendidikan Matematika UMM</span>
         </div>
         <div className="flex items-center gap-4">
           <span className="font-bold text-[#F4E6CC]">Explore · Think · Excel</span>

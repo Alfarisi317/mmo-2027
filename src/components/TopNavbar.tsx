@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ShieldCheck, Monitor, BookOpen, GraduationCap, Menu, X, Sparkles } from 'lucide-react';
+import { MmoLogo } from './MmoLogo';
 
 interface TopNavbarProps {
   currentView: 'portal' | 'exam' | 'receipt' | 'proctor' | 'guidelines' | 'about';
@@ -31,9 +32,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
           onClick={() => handleNav('portal')}
           className="flex items-center gap-2.5 bg-[#2C4B6B] hover:bg-[#35587B] text-white px-3.5 py-1.5 rounded-2xl border-2 border-[#E49548] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F4E6CC] group cursor-pointer transition-all duration-200 shadow-xs"
         >
-          <div className="w-7 h-7 rounded-xl bg-[#F4E6CC] text-[#1E3954] flex items-center justify-center font-extrabold text-xs tracking-wider group-hover:scale-105 transition-transform">
-            M
-          </div>
+          <MmoLogo size="sm" className="group-hover:scale-105 transition-transform" />
           <div className="flex flex-col text-left">
             <span className="text-xs font-extrabold tracking-tight text-white leading-tight flex items-center gap-1 whitespace-nowrap">
               <span>MMO 2027</span>

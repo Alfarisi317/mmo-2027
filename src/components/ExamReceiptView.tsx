@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { ParticipantProfile, Question, SiteFeedbackEntry, UserAnswer } from '../types';
 import { ApiService } from '../services/api';
+import { MmoLogo } from './MmoLogo';
 
 interface ExamReceiptViewProps {
   participant: ParticipantProfile;
@@ -111,9 +112,7 @@ export const ExamReceiptView: React.FC<ExamReceiptViewProps> = ({
               </p>
             </div>
 
-            <div className="w-12 h-12 rounded-xl bg-[#F4E6CC] border-2 border-[#E49548] flex items-center justify-center font-extrabold text-[#1E3954] text-base shrink-0">
-              MMO
-            </div>
+            <MmoLogo size="lg" />
           </div>
         </div>
 

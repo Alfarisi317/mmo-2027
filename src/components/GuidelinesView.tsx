@@ -1,5 +1,6 @@
 import React from 'react';
 import { ShieldCheck, BookOpen, ArrowRight, Award, Compass, Brain, Trophy, Sparkles } from 'lucide-react';
+import { MmoLogo } from './MmoLogo';
 
 interface GuidelinesViewProps {
   onStartExamClick: () => void;
@@ -9,17 +10,20 @@ export const GuidelinesView: React.FC<GuidelinesViewProps> = ({ onStartExamClick
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 lg:py-12 space-y-8 text-white">
       {/* Header */}
-      <div className="border-b-2 border-[#E49548]/60 pb-6">
-        <div className="inline-flex items-center gap-2 bg-[#F4E6CC] text-[#1E3954] px-4 py-1.5 rounded-full text-xs font-extrabold shadow-xs mb-3 border border-[#E49548]">
-          <Sparkles className="w-3.5 h-3.5 text-[#CE7D30]" />
-          <span>Buku Pedoman Teknis &amp; Regulasi MMO 2027</span>
+      <div className="border-b-2 border-[#E49548]/60 pb-6 flex items-start sm:items-center gap-4">
+        <MmoLogo size="lg" className="shadow-md" />
+        <div>
+          <div className="inline-flex items-center gap-2 bg-[#F4E6CC] text-[#1E3954] px-4 py-1.5 rounded-full text-xs font-extrabold shadow-xs mb-3 border border-[#E49548]">
+            <Sparkles className="w-3.5 h-3.5 text-[#CE7D30]" />
+            <span>Buku Pedoman Teknis &amp; Regulasi MMO 2027</span>
+          </div>
+          <h1 className="text-2xl lg:text-3xl font-extrabold text-white tracking-tight">
+            Panduan Resmi Pelaksanaan MMO 2027
+          </h1>
+          <p className="text-xs text-[#DCE9F5] mt-1">
+            Matriks Mathematics Olympiad: “Explore, Think, Excel” · HMPS Pendidikan Matematika Universitas Muhammadiyah Malang
+          </p>
         </div>
-        <h1 className="text-2xl lg:text-3xl font-extrabold text-white tracking-tight">
-          Panduan Resmi Pelaksanaan MMO 2027
-        </h1>
-        <p className="text-xs text-[#DCE9F5] mt-1">
-          Matriks Mathematics Olympiad: “Explore, Think, Excel” · HMPS Pendidikan Matematika Universitas Muhammadiyah Malang
-        </p>
       </div>
 
       {/* 3 Integrated Pillars Theme Card */}

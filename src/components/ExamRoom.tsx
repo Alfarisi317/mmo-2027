@@ -7,6 +7,7 @@ import { ExamTimer } from './ExamTimer';
 import { AIProctor } from './AIProctor';
 import { AntiCheatGuard } from './AntiCheatGuard';
 import { ApiService } from '../services/api';
+import { MmoLogo } from './MmoLogo';
 
 interface ExamRoomProps {
   questions: Question[];
@@ -298,9 +299,7 @@ export const ExamRoom: React.FC<ExamRoomProps> = ({
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 sm:gap-6">
           {/* Brand & Participant Identity */}
           <div className="flex items-center gap-2.5 sm:gap-3">
-            <div className="w-8 h-8 rounded-2xl bg-[#F4E6CC] border-2 border-[#E49548] flex items-center justify-center font-extrabold text-[#1E3954] text-xs tracking-wider shadow-xs">
-              M
-            </div>
+            <MmoLogo size="md" />
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 truncate">
                 <span className="text-xs sm:text-sm font-bold text-white truncate">

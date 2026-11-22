@@ -3,6 +3,7 @@ import confetti from 'canvas-confetti';
 import { Award, CheckCircle, XCircle, MinusCircle, ShieldCheck, Download, RotateCcw, ChevronDown, ChevronUp, Printer } from 'lucide-react';
 import { Question, UserAnswer, ViolationRecord, ParticipantProfile, MathDomain } from '../types';
 import { MathRenderer } from './MathRenderer';
+import { MmoLogo } from './MmoLogo';
 
 interface ExamResultViewProps {
   participant: ParticipantProfile;
@@ -110,16 +111,19 @@ export const ExamResultView: React.FC<ExamResultViewProps> = ({
         <div className="absolute top-0 right-0 w-80 h-80 bg-[#E49548]/10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-[#4E779F]/50">
-          <div>
-            <span className="inline-block text-xs font-extrabold text-[#1E3954] bg-[#F4E6CC] px-3 py-1 rounded-full tracking-wider uppercase mb-2 shadow-xs">
-              Lembar Hasil Penilaian Instan · MMO 2027
-            </span>
-            <h1 className="text-2xl lg:text-3xl font-extrabold text-white tracking-tight">
-              Matriks Mathematics Olympiad
-            </h1>
-            <p className="text-xs text-[#DCE9F5] mt-1">
-              Universitas Muhammadiyah Malang · Prodi Pendidikan Matematika · HMPS MATRIKS Bidang Keilmuan
-            </p>
+          <div className="flex items-start sm:items-center gap-4">
+            <MmoLogo size="lg" className="shadow-md" />
+            <div>
+              <span className="inline-block text-xs font-extrabold text-[#1E3954] bg-[#F4E6CC] px-3 py-1 rounded-full tracking-wider uppercase mb-2 shadow-xs">
+                Lembar Hasil Penilaian Instan · MMO 2027
+              </span>
+              <h1 className="text-2xl lg:text-3xl font-extrabold text-white tracking-tight">
+                Matriks Mathematics Olympiad
+              </h1>
+              <p className="text-xs text-[#DCE9F5] mt-1">
+                Universitas Muhammadiyah Malang · Prodi Pendidikan Matematika · HMPS MATRIKS Bidang Keilmuan
+              </p>
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
